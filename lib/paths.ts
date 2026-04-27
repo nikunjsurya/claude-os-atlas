@@ -17,6 +17,7 @@ export function clearRootOverride(): void {
 
 export interface Roots {
   home: string
+  memoryDir: string
   memoryIndex: string
   projects: string
   claudeGlobal: string
@@ -29,16 +30,17 @@ export interface Roots {
 
 export function getRoots(): Roots {
   const home = override ?? os.homedir()
+  const memoryDir = path.join(
+    home,
+    '.claude',
+    'projects',
+    'C--Users-surya',
+    'memory'
+  )
   return {
     home,
-    memoryIndex: path.join(
-      home,
-      '.claude',
-      'projects',
-      'C--Users-surya',
-      'memory',
-      'MEMORY.md'
-    ),
+    memoryDir,
+    memoryIndex: path.join(memoryDir, 'MEMORY.md'),
     projects: path.join(home, 'Projects'),
     claudeGlobal: path.join(home, '.claude'),
     claudeSkills: path.join(home, '.claude', 'skills'),
