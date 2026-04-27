@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
+/* Palette per spec section 6.1 */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --canvas: #0E1014;
+  --panel: #15171D;
+  --border: #2A2D34;
+  --ink: #E6E8EE;
+  --ink-dim: #6B7280;
+
+  --status-active: #5AA77A;
+  --status-shipped: #5BA3B5;
+  --status-parked: #6B7280;
+  --status-reference: #9F7AEA;
+
+  --cluster-content: #E07B4E;
+  --cluster-software: #5BA3B5;
+  --cluster-voice: #9F7AEA;
+  --cluster-infra: #5AA77A;
+  --cluster-meta: #6B7280;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-border: var(--border);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  background: var(--canvas);
+  color: var(--ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
