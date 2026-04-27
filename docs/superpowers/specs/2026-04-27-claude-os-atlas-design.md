@@ -1,6 +1,6 @@
 # claude OS — atlas: design spec
 
-**Status:** Draft 2 (post-reviewer-iter-1)
+**Status:** Approved (reviewer pass 2)
 **Date:** 2026-04-27
 **Owner:** Surya
 **Mockup:** `Projects/sessions/2026-04-27-claude-os-atlas/mockup-a-constellation.excalidraw`
@@ -136,7 +136,7 @@ export interface AtlasNode {
   size: number                  // 14-32, see formula in 5.2.1
   description: string           // one-liner, from memory entry or frontmatter
   bodyMarkdown: string          // full markdown for side panel
-  lastTouched: string           // ISO date, from git log or fs.stat
+  lastTouched: string           // ISO date, from fs.stat mtime (no git in V1)
   source: {
     path: string                // absolute path on disk
     type: 'memory' | 'folder' | 'skill' | 'agent' | 'claudemd'
@@ -225,8 +225,10 @@ Rule order (first match wins):
 3. content  → kind=='project' AND search text contains any CONTENT_KEYWORDS token
 4. software → kind=='project' AND folder contains package.json
 5. meta     → kind in {'skill', 'feedback', 'instruction', 'reference'}
-6. fallback → 'meta', plus console.warn(`unclassified: ${id}`)
+6. fallback → 'meta', plus console.warn(`unclassified: ${id}`) AND push to AtlasResponse.warnings[]
 ```
+
+Note: `remotion` appears intentionally in both `CONTENT_KEYWORDS` and `INFRA_KEYWORDS`. Kind-gating in the rule order resolves the overlap: infra rule only fires for non-projects, content rule only fires for projects.
 
 ### 5.6 Status assignment heuristics (classify.ts)
 
@@ -326,7 +328,7 @@ When a node is selected:
 - Node label (26px) and one-line description (13px dim italic) below.
 - Divider, then metadata rows: type, status with date, last touch, memory ref, repo. Two columns: 110px label + value.
 - "LINKED" section: list of connected nodes with colored dots, click to select.
-- Sparkline of last 30 days of git or filesystem activity.
+- Sparkline of last 30 days of filesystem activity (mtime-based bucketing).
 - Two action buttons: "Open in vault" (orange), "View memory file" (gray).
 
 When nothing selected: panel shows a "Pick a node" hint state with the cluster legend.
