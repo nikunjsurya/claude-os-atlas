@@ -9,12 +9,12 @@ export default function BrowserChrome() {
       aria-hidden
     >
       <div className="flex items-center gap-1.5">
-        <span className="inline-block h-3 w-3 rounded-full bg-[#FF5F57]" />
-        <span className="inline-block h-3 w-3 rounded-full bg-[#FEBC2E]" />
-        <span className="inline-block h-3 w-3 rounded-full bg-[#28C840]" />
+        <span className="inline-block h-3 w-3 rounded-full bg-[#FF5F56]" />
+        <span className="inline-block h-3 w-3 rounded-full bg-[#FFBD2E]" />
+        <span className="inline-block h-3 w-3 rounded-full bg-[#27C93F]" />
       </div>
       <div className="flex flex-1 justify-center">
-        <div className="rounded-md border border-[#2A2D34] bg-[#0E1014] px-4 py-1 text-[11px] font-mono tracking-wide text-[#6B7280]">
+        <div className="rounded-md border border-[#2A2D34] bg-[#0E1014] px-4 py-1 font-mono text-[12px] tracking-wide text-[#6B7280]">
           claude-os.local / atlas
         </div>
       </div>

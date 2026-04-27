@@ -19,20 +19,18 @@ const ITEMS: Array<{ key: keyof AtlasStats; label: string }> = [
 
 export default function StatsBar({ stats }: Props) {
   return (
-    <footer className="flex h-[50px] shrink-0 items-center justify-between border-t border-[#2A2D34] bg-[#15171D] px-6">
-      <div className="flex items-center gap-6">
+    <footer className="flex h-[50px] shrink-0 items-center justify-between border-t border-[#2A2D34] bg-[#15171D] px-10">
+      <div className="flex items-center gap-8">
         {ITEMS.map((item) => (
-          <div key={item.key} className="flex items-baseline gap-1.5">
-            <span className="text-[14px] font-semibold tabular-nums text-[#E6E8EE]">
+          <div key={item.key} className="flex items-baseline gap-2">
+            <span className="text-[12px] text-[#6B7280]">{item.label}</span>
+            <span className="text-[18px] font-semibold tabular-nums text-[#E6E8EE]">
               {stats[item.key]}
-            </span>
-            <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
-              {item.label}
             </span>
           </div>
         ))}
       </div>
-      <div className="text-[10px] italic text-[#6B7280]">
+      <div className="text-[11px] italic text-[#6B7280]">
         auto-derived from MEMORY.md + Projects/
       </div>
     </footer>

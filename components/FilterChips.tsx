@@ -29,10 +29,10 @@ export default function FilterChips() {
             type="button"
             onClick={() => setFilter(chip.key)}
             className={
-              'rounded-full px-3 py-1 text-[12px] font-medium transition ' +
+              'rounded-full px-4 py-1.5 text-[13px] font-medium transition ' +
               (isActive
-                ? 'bg-[#E07B4E] text-[#0E1014]'
-                : 'border border-[#2A2D34] bg-transparent text-[#6B7280] hover:border-[#E07B4E]/60 hover:text-[#E6E8EE]')
+                ? 'bg-[#E07B4E] text-[#0E1014] hover:bg-[#d4673a]'
+                : 'border border-[#2A2D34] bg-[#1A1C22] text-[#6B7280] hover:border-[#E07B4E]/60 hover:text-[#E6E8EE]')
             }
           >
             {chip.label}

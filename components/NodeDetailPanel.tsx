@@ -48,17 +48,20 @@ export default function NodeDetailPanel({ data }: Props) {
   }, [selected, data.edges, nodeIndex])
 
   if (!selected) {
+    // Cluster legend uses the 4 visual clusters (meta is the gray catch-all,
+    // not worth highlighting in the legend).
+    const legendClusters = data.clusters.filter((c) => c.id !== 'meta')
     return (
       <aside className="flex h-full w-[380px] flex-col border-l border-[#2A2D34] bg-[#15171D]">
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="text-[13px] uppercase tracking-wider text-[#6B7280]">Pick a node</div>
-          <div className="mt-2 text-[15px] text-[#E6E8EE]">
+          <div className="text-[11px] uppercase tracking-wider text-[#6B7280]">Pick a node</div>
+          <div className="mt-2 text-[15px] leading-snug text-[#E6E8EE]">
             Click any star to see what it is and how it links to the rest.
           </div>
 
           <div className="mt-8 text-[11px] uppercase tracking-wider text-[#6B7280]">Clusters</div>
-          <ul className="mt-3 space-y-2">
-            {data.clusters.map((c) => (
+          <ul className="mt-3 space-y-2.5">
+            {legendClusters.map((c) => (
               <li key={c.id} className="flex items-center gap-3 text-[13px] text-[#E6E8EE]">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
@@ -69,8 +72,8 @@ export default function NodeDetailPanel({ data }: Props) {
             ))}
           </ul>
 
-          <div className="mt-10 text-[11px] uppercase tracking-wider text-[#6B7280]">Status</div>
-          <ul className="mt-3 space-y-2">
+          <div className="mt-8 text-[11px] uppercase tracking-wider text-[#6B7280]">Status</div>
+          <ul className="mt-3 space-y-2.5">
             {(['active', 'shipped', 'parked', 'reference'] as const).map((s) => (
               <li key={s} className="flex items-center gap-3 text-[13px] text-[#E6E8EE]">
                 <span
@@ -187,9 +190,7 @@ export default function NodeDetailPanel({ data }: Props) {
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start gap-3">
-      <dt className="w-[110px] shrink-0 text-[11px] uppercase tracking-wider text-[#6B7280]">
-        {label}
-      </dt>
+      <dt className="w-[110px] shrink-0 text-[12px] text-[#6B7280]">{label}</dt>
       <dd
         className={
           'flex-1 text-[13px] text-[#E6E8EE] ' +
@@ -218,12 +219,16 @@ function ActionButton({
       aria-disabled={disabled}
       onClick={(e) => disabled && e.preventDefault()}
       className={
-        'block rounded-md border px-3 py-2 text-center text-[12px] font-medium transition ' +
+        'group block rounded-md border px-3 py-2 text-center text-[12px] font-medium transition ' +
         (disabled
           ? 'cursor-not-allowed border-[#2A2D34] text-[#6B7280] opacity-50'
-          : 'border-[#2A2D34] text-[#E6E8EE] hover:bg-[#1d2027]')
+          : 'border-[#2A2D34] text-[#E6E8EE] hover:brightness-110')
       }
-      style={!disabled ? { borderColor: color, color } : undefined}
+      style={
+        !disabled
+          ? { borderColor: color, color, backgroundColor: `${color}1A` }
+          : undefined
+      }
     >
       {label}
     </a>
