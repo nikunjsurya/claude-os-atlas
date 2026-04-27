@@ -6,6 +6,9 @@
 import { getRoots } from '@/lib/paths'
 import { buildAtlasResponse } from '@/lib/buildAtlas'
 import AtlasRoot from '@/components/AtlasRoot'
+import BrowserChrome from '@/components/BrowserChrome'
+import HeaderBar from '@/components/HeaderBar'
+import StatsBar from '@/components/StatsBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,5 +22,12 @@ export default async function Page() {
     globalClaudeMd: roots.globalClaudeMd,
   })
 
-  return <AtlasRoot data={data} />
+  return (
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0E1014]">
+      <BrowserChrome />
+      <HeaderBar />
+      <AtlasRoot data={data} />
+      <StatsBar stats={data.stats} />
+    </div>
+  )
 }

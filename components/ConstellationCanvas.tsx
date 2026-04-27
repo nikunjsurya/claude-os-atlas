@@ -91,6 +91,14 @@ export default function ConstellationCanvas({ data }: Props) {
     [data.edges, visibleIds]
   )
 
+  // If the active filter hides the currently-selected node, clear selection
+  // so the side panel doesn't show stale data for an off-screen node.
+  useEffect(() => {
+    if (selectedId && !visibleIds.has(selectedId)) {
+      setSelected(null)
+    }
+  }, [selectedId, visibleIds, setSelected])
+
   const graphData = useMemo(
     () => ({
       nodes: visibleNodes.map((n) => ({ ...n })),
