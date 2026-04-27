@@ -149,10 +149,14 @@ export default function NodeDetailPanel({ data }: Props) {
           </>
         )}
 
-        {/* Activity sparkline */}
+        {/* Activity sparkline. Bucket selected + linked node lastTouched
+            into 30 daily buckets. */}
         <div className="mt-6 text-[11px] uppercase tracking-wider text-[#6B7280]">Activity (30 days)</div>
         <div className="mt-2">
-          <ActivitySparkline lastTouched={selected.lastTouched} color={statusColor} />
+          <ActivitySparkline
+            timestamps={[selected.lastTouched, ...linkedNodes.map((n) => n.lastTouched)]}
+            color={statusColor}
+          />
         </div>
 
         {/* Body markdown */}
