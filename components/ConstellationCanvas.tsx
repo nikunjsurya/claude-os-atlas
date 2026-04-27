@@ -27,6 +27,22 @@ const STATUS_COLORS: Record<AtlasNode['status'], string> = {
   reference: '#9F7AEA',
 }
 
+const CLUSTER_COLORS: Record<AtlasNode['cluster'], string> = {
+  content: '#E07B4E',
+  software: '#5BA3B5',
+  voice: '#9F7AEA',
+  infra: '#5AA77A',
+  meta: '#6B7280',
+}
+
+const CLUSTER_LABELS: Record<AtlasNode['cluster'], string> = {
+  content: 'CONTENT',
+  software: 'SOFTWARE',
+  voice: 'VOICE',
+  infra: 'INFRA',
+  meta: 'META',
+}
+
 interface Props {
   data: AtlasResponse
 }
@@ -101,6 +117,57 @@ export default function ConstellationCanvas({ data }: Props) {
           d3AlphaDecay={0.04}
           linkColor={() => 'rgba(120, 130, 145, 0.18)'}
           linkWidth={(l: { weight?: number }) => 0.6 + (l.weight ?? 0.3) * 0.6}
+          onRenderFramePre={(ctx: CanvasRenderingContext2D) => {
+            // Cluster halos. Compute centroid + spread per cluster from
+            // current node positions. Paint translucent ellipse + label.
+            const groups = new Map<AtlasNode['cluster'], GraphNode[]>()
+            for (const n of graphData.nodes as GraphNode[]) {
+              if (typeof n.x !== 'number' || typeof n.y !== 'number') continue
+              const arr = groups.get(n.cluster) ?? []
+              arr.push(n)
+              groups.set(n.cluster, arr)
+            }
+            for (const [cluster, members] of groups) {
+              if (members.length < 2) continue
+              let sx = 0, sy = 0
+              for (const m of members) {
+                sx += m.x as number
+                sy += m.y as number
+              }
+              const cx = sx / members.length
+              const cy = sy / members.length
+              let maxDx = 0, maxDy = 0
+              for (const m of members) {
+                maxDx = Math.max(maxDx, Math.abs((m.x as number) - cx))
+                maxDy = Math.max(maxDy, Math.abs((m.y as number) - cy))
+              }
+              const rx = maxDx + 32
+              const ry = maxDy + 32
+              const color = CLUSTER_COLORS[cluster]
+
+              // Solid translucent fill (8%).
+              ctx.beginPath()
+              ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI)
+              ctx.fillStyle = withAlpha(color, 0.08)
+              ctx.fill()
+
+              // Radial gradient overlay (~20%) to fake the hachure texture.
+              const grad = ctx.createRadialGradient(cx, cy, Math.min(rx, ry) * 0.4, cx, cy, Math.max(rx, ry))
+              grad.addColorStop(0, withAlpha(color, 0.18))
+              grad.addColorStop(1, withAlpha(color, 0))
+              ctx.beginPath()
+              ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI)
+              ctx.fillStyle = grad
+              ctx.fill()
+
+              // Label above the cluster.
+              ctx.font = '11px var(--font-geist-sans), system-ui, sans-serif'
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'bottom'
+              ctx.fillStyle = withAlpha(color, 0.9)
+              ctx.fillText(CLUSTER_LABELS[cluster], cx, cy - ry - 6)
+            }
+          }}
           onNodeClick={(node: { id?: string | number }) => {
             if (typeof node.id === 'string') setSelected(node.id)
           }}
