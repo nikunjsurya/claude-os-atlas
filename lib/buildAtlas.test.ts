@@ -86,4 +86,29 @@ describe('buildAtlasResponse (API integration)', () => {
     expect(res.warnings).toBeDefined()
     expect(res.warnings!.length).toBeGreaterThan(0)
   })
+
+  it('returns a 200-shape response with empty arrays + warnings when EVERY root is missing (never 500)', async () => {
+    // Spec section 5.4: "Never returns 500 unless the route handler itself
+    // crashes." This is the hard guarantee for the API layer. Point every
+    // root at a non-existent path and confirm the response shape stays
+    // intact, nodes/edges arrays are empty, and warnings record the gaps.
+    const res = await buildAtlasResponse({
+      memoryDir: path.join(F, 'nope-memory'),
+      projectsRoot: path.join(F, 'nope-projects'),
+      claudeSkills: path.join(F, 'nope-skills'),
+      agentRoots: [path.join(F, 'nope-agents')],
+      globalClaudeMd: path.join(F, 'nope-global', 'CLAUDE.md'),
+    })
+    expect(res.nodes).toEqual([])
+    expect(res.edges).toEqual([])
+    expect(res.stats.nodes).toBe(0)
+    expect(res.stats.edges).toBe(0)
+    expect(res.clusters).toHaveLength(5)
+    expect(res.warnings).toBeDefined()
+    expect(res.warnings!.length).toBeGreaterThanOrEqual(4)
+    // Every parser surface should have flagged its missing root.
+    const joined = res.warnings!.join(' | ')
+    expect(joined).toMatch(/parseMemoryIndex|MEMORY\.md not found/)
+    expect(joined).toMatch(/parseProjectsFolder|root not found/)
+  })
 })

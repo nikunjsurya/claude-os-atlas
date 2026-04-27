@@ -9,9 +9,9 @@ import type { ParsedNode, ParserResult, AtlasEdge, NodeKind } from '../types'
 // "[label.md](file.md) | type | description"
 const ROW_RE = /^\|\s*\[([^\]]+)\]\(([^)]+)\)\s*\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$/
 
-// "[Title](file.md)" — markdown link
+// "[Title](file.md)" markdown link
 const MD_LINK_RE = /\[[^\]]+\]\(([^)]+\.md)\)/g
-// "[[wikilink]]" — Obsidian-style. Strips the `.md` if present.
+// "[[wikilink]]" Obsidian-style. Strips the `.md` if present.
 const WIKILINK_RE = /\[\[([^\]]+?)\]\]/g
 
 const KIND_MAP: Record<string, NodeKind> = {

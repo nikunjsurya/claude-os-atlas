@@ -26,15 +26,6 @@ async function readIfExists(p: string): Promise<string | null> {
   }
 }
 
-async function existsFile(p: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(p)
-    return stat.isFile()
-  } catch {
-    return false
-  }
-}
-
 export async function parseProjectsFolder(
   projectsRoot: string
 ): Promise<ParserResult> {
@@ -91,8 +82,6 @@ export async function parseProjectsFolder(
     } catch {
       warnings.push(`parseProjectsFolder: stat failed for ${folderPath}`)
     }
-
-    void (await existsFile(path.join(folderPath, 'package.json')))
 
     nodes.push({
       id,
