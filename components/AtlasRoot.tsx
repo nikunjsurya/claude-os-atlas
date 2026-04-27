@@ -6,6 +6,7 @@
 
 import type { AtlasResponse } from '@/lib/types'
 import ConstellationCanvas from './ConstellationCanvas'
+import NodeDetailPanel from './NodeDetailPanel'
 
 interface Props {
   data: AtlasResponse
@@ -13,8 +14,11 @@ interface Props {
 
 export default function AtlasRoot({ data }: Props) {
   return (
-    <div className="relative flex-1">
-      <ConstellationCanvas data={data} />
+    <div className="relative flex flex-1">
+      <div className="relative flex-1">
+        <ConstellationCanvas data={data} />
+      </div>
+      <NodeDetailPanel data={data} />
     </div>
   )
 }
