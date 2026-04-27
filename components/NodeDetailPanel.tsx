@@ -18,14 +18,6 @@ const STATUS_COLORS: Record<AtlasNode['status'], string> = {
   reference: '#9F7AEA',
 }
 
-const CLUSTER_COLORS: Record<AtlasNode['cluster'], string> = {
-  content: '#E07B4E',
-  software: '#5BA3B5',
-  voice: '#9F7AEA',
-  infra: '#5AA77A',
-  meta: '#6B7280',
-}
-
 interface Props {
   data: AtlasResponse
 }
@@ -143,11 +135,11 @@ export default function NodeDetailPanel({ data }: Props) {
                   <button
                     type="button"
                     onClick={() => setSelected(n.id)}
-                    className="flex w-full items-center gap-2.5 rounded text-left text-[13px] text-[#E6E8EE] hover:text-white"
+                    className="flex w-full items-center gap-2.5 rounded px-1 py-0.5 text-left text-[13px] text-[#E6E8EE] transition hover:bg-[#1d2027] hover:text-white"
                   >
                     <span
                       className="inline-block h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: CLUSTER_COLORS[n.cluster] }}
+                      style={{ backgroundColor: STATUS_COLORS[n.status] }}
                     />
                     <span className="truncate">{n.label}</span>
                   </button>
