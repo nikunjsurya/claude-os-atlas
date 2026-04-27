@@ -1,6 +1,6 @@
 # claude OS — atlas: design spec
 
-**Status:** Draft 1
+**Status:** Draft 2 (post-reviewer-iter-1)
 **Date:** 2026-04-27
 **Owner:** Surya
 **Mockup:** `Projects/sessions/2026-04-27-claude-os-atlas/mockup-a-constellation.excalidraw`
@@ -41,6 +41,7 @@ The build is done when all of these are true:
 
 | Layer | Choice | Why |
 | --- | --- | --- |
+| Runtime | Node.js >= 20.0 | Required by Next.js 15. |
 | Framework | Next.js 15 (App Router) + TypeScript | Surya's daily driver (TopSnip). Built-in API routes give us a clean filesystem-to-JSON boundary and leave room for V2 mission control without re-platforming. |
 | Styling | Tailwind 4 | Tight design tokens, matches the dark constellation palette cleanly. |
 | Graph | `react-force-graph-2d` | Canvas-rendered, handles hundreds of nodes smoothly, built-in hover/click hooks, supports node-rendering callbacks for halos and pulses. |
@@ -49,6 +50,8 @@ The build is done when all of these are true:
 | Tests | Vitest | Fast, native ESM, plays well with Next.js. |
 
 No backend. No database. No auth.
+
+The Next.js app lives at the **repo root** (`Projects/claude-os-atlas/`). No nested `web/` or `app/` subdir for code. The `docs/` tree sits alongside the Next.js source tree, ignored by Next via `next.config.ts` `pageExtensions`.
 
 ### 4.2 Component tree
 
@@ -81,7 +84,7 @@ lib/
 │   ├── parseProjectsFolder.ts     Walks ~/Projects/. One node per top-level project folder. Status inferred from git activity, _index.md, and PARKED markers.
 │   ├── parseSkills.ts             Walks ~/.claude/skills/ and plugin caches. One node per SKILL.md, name + description from frontmatter.
 │   ├── parseAgents.ts             Walks ~/.claude/agents/ and ~/_templates/.claude/agents/. One node per agent definition.
-│   └── parseClaudeMd.ts           Reads ~/.claude/CLAUDE.md and any project-level CLAUDE.md. One node per instruction file.
+│   └── parseClaudeMd.ts           Reads exactly two scopes: ~/.claude/CLAUDE.md (global) and ~/Projects/*/CLAUDE.md (one level deep, no recursion). One node per instruction file.
 ├── merge.ts                       Dedupe nodes by id (prefer disk over memory), dedupe edges, layer descriptions.
 ├── classify.ts                    Pure functions: assignCluster(node) and assignStatus(node). Heuristics defined in one place.
 └── paths.ts                       Resolves home directory paths consistently. One module so tests can override roots.
@@ -130,7 +133,7 @@ export interface AtlasNode {
   kind: NodeKind
   cluster: Cluster
   status: Status
-  size: number                  // 14-32, mapped from signal weight
+  size: number                  // 14-32, see formula in 5.2.1
   description: string           // one-liner, from memory entry or frontmatter
   bodyMarkdown: string          // full markdown for side panel
   lastTouched: string           // ISO date, from git log or fs.stat
@@ -152,6 +155,11 @@ export interface AtlasEdge {
   weight: number                // 0.1 - 1.0, drives line opacity
 }
 
+export interface AtlasGraph {
+  directed: false               // V1 graph is undirected. Wikilink direction is preserved in source data
+                                // but the rendered graph and edge dedupe key both treat edges as undirected.
+}
+
 export interface AtlasResponse {
   nodes: AtlasNode[]
   edges: AtlasEdge[]
@@ -160,6 +168,14 @@ export interface AtlasResponse {
   generatedAt: string           // ISO
 }
 ```
+
+### 5.2.1 Node size formula
+
+```
+size = clamp(14 + (edgeCount * 1.5) + (status === 'active' ? 4 : 0), 14, 32)
+```
+
+`edgeCount` = number of edges incident to the node after merge + dedupe. Pure function of the final graph, computed once at API-route time after all parsers + classifier have run.
 
 ### 5.3 Node ID convention
 
@@ -179,36 +195,72 @@ When two parsers emit the same id (e.g., `project-topsnip` from both memory and 
 
 ### 5.5 Cluster assignment heuristics (classify.ts)
 
+All matching is case-insensitive against `node.label + ' ' + node.description` (the search text). All keyword sets are closed lists declared as exported constants in `classify.ts` so they're trivially testable.
+
 ```
-content  → kind=='project' && (folder under Projects/ matches content keywords: channel, shorts, video, podcast, neither-bank, hindi-ai, etc.)
-            OR memory description contains "channel", "video", "render", "publishing"
-software → kind=='project' && (folder has package.json OR src/ OR has commits in last 90 days)
-            AND not classified as content
-voice    → label OR memory description references nikunj-agent, elevenlabs, voice samples, voice profile
-infra    → kind=='reference' AND label matches mcp, n8n, lightrag, paperclip, higgsfield, vps, codex, plugin
-meta     → kind in {'skill', 'feedback', 'instruction'} OR no other rule matched
+const CONTENT_KEYWORDS = [
+  'channel', 'shorts', 'video', 'podcast', 'episode',
+  'neither-bank', 'hindi-ai', 'faceless', 'forgotten-myths',
+  'hidden-systems', 'render', 'publishing', 'remotion',
+  'shorts-factory', 'longform', 'reel'
+]
+
+const VOICE_KEYWORDS = [
+  'nikunj-agent', 'nikunj agent', 'elevenlabs', 'voice sample',
+  'voice profile', 'voice clone', 'rapid-update', 'voice-check'
+]
+
+const INFRA_KEYWORDS = [
+  'mcp', 'n8n', 'lightrag', 'paperclip', 'higgsfield',
+  'vps', 'codex', 'plugin', 'cli-anything', 'remotion',
+  'crawl4ai', 'yt-dlp'
+]
 ```
 
-Order matters: voice and infra checked before software/content to avoid misclassification. Unclassified → `meta` + `console.warn` so I can add a rule.
+Rule order (first match wins):
+
+```
+1. voice    → search text contains any VOICE_KEYWORDS token
+2. infra    → kind in {'reference', 'feedback'} AND search text contains any INFRA_KEYWORDS token
+3. content  → kind=='project' AND search text contains any CONTENT_KEYWORDS token
+4. software → kind=='project' AND folder contains package.json
+5. meta     → kind in {'skill', 'feedback', 'instruction', 'reference'}
+6. fallback → 'meta', plus console.warn(`unclassified: ${id}`)
+```
 
 ### 5.6 Status assignment heuristics (classify.ts)
 
+No git inspection in V1. Status comes from explicit textual signals in memory entries plus filesystem mtime. This keeps parsers fast and avoids shelling out.
+
 ```
-parked    → memory description contains "PARKED" (case-insensitive) OR folder has PARKED.md
-shipped   → memory description contains "shipped" OR contains "complete" OR contains "production-ready"
-            OR git log shows last commit > 30 days ago AND has tagged release
-active    → kind=='project' AND last git activity within 14 days
-reference → kind in {'reference', 'feedback', 'instruction'}
-default   → 'active' for projects, 'reference' for everything else
+1. parked    → search text matches /\bPARKED\b/i  OR  folder contains PARKED.md
+2. shipped   → search text matches /\b(shipped|complete|production-ready)\b/i
+3. active    → kind=='project' AND lastTouched within 14 days
+4. reference → kind in {'reference', 'feedback', 'instruction'}
+5. default   → 'active' for kind=='project', else 'reference'
 ```
+
+`lastTouched` is derived from `fs.stat(folderPath).mtime` for folder-sourced nodes and from the memory entry file's mtime for memory-sourced nodes. No git log calls. This is intentional: `lastTouched` is "approximately when this thing was last edited," sufficient for the activity threshold.
 
 ### 5.7 Edge derivation
 
-- **wikilink edges:** parse all `[Title](file.md)` and `[[Wikilink]]` style links inside memory entry body files. Each link → edge between source memory node and target node.
-- **folder-relation edges:** when a project folder contains a reference to another project (in README, `_index.md`, or imports), emit an edge.
-- **inferred-tag edges:** when two nodes share a strong keyword (e.g., both mention "ElevenLabs" prominently), emit a low-weight edge. Weight capped at 0.3 so it doesn't dominate visually.
+The graph is **undirected** in V1 (see `AtlasGraph.directed: false` in 5.2). Wikilinks are inherently directional but for visualization we treat them as undirected; direction is preserved in source data only.
 
-Edges deduped by `(min(source,target), max(source,target), kind)` triple.
+- **wikilink edges:** parse `[Title](file.md)` and `[[Wikilink]]` style links inside memory entry body files. Each link → edge between source memory node and target node. `kind: 'wikilink'`, `weight: 1.0`.
+- **folder-relation edges:** when a project folder's `README.md` or `_index.md` mentions the slug of another known project node (case-insensitive substring match against the set of known project ids), emit an edge. `kind: 'folder-relation'`, `weight: 0.6`. No file-content scanning beyond README + _index to keep this bounded.
+- **inferred-tag edges:** declared via a closed set of "shared-entity tokens." For each token in the set, find all nodes whose `label` or `description` (NOT body) contains it (case-insensitive whole-word match). Emit an edge between every pair of those nodes for that token. `kind: 'inferred-tag'`, `weight: 0.3`.
+
+```
+const SHARED_ENTITY_TOKENS = [
+  'ElevenLabs', 'Higgsfield', 'Nikunj', 'NotebookLM',
+  'LightRAG', 'Paperclip', 'n8n', 'Pexels',
+  'Vercel', 'Excalidraw', 'Codex', 'Wispr Flow'
+]
+```
+
+If a token would emit > 8 edges (i.e., > 8 nodes mention it), cap the edges to the top-8 strongest by status precedence (active > shipped > parked > reference) to prevent visual hairballs.
+
+Edge dedupe key (graph treated as undirected): `${min(source,target)}__${max(source,target)}__${kind}`. When the same node-pair has edges of multiple kinds, keep the highest-weight one and drop the rest.
 
 ## 6. Visual specification
 
@@ -249,6 +301,18 @@ Reference: `mockup-a-constellation.excalidraw` in the session folder.
 - Selected node gets an 18%-opacity outer halo at 1.5x size and a 2px stroke instead of 1.5px.
 - Label below the node, 12px, ink primary (or ink dim if parked).
 
+**Pulse implementation:** `react-force-graph-2d` calls `nodeCanvasObject(node, ctx, globalScale)` every animation frame. The pulse is a per-frame computation inside that callback:
+
+```ts
+// inside nodeCanvasObject for active nodes
+const t = (Date.now() % 3000) / 3000           // 0..1 over 3s
+const pulse = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI)   // 0..1 sine wave
+const haloAlpha = 0.15 + 0.10 * pulse          // 0.15..0.25
+const haloRadius = node.size + 4 + 2 * pulse
+```
+
+CSS animations do not work on canvas; this per-frame redraw is the only way.
+
 ### 6.4 Cluster halos
 
 - Translucent ellipses behind nodes, color = cluster.
@@ -281,7 +345,7 @@ When nothing selected: panel shows a "Pick a node" hint state with the cluster l
 | Malformed markdown in memory entry | Parser still emits the node with an empty body, logs warning. |
 | Renderer crash | React error boundary in `ConstellationCanvas` shows fallback message and the raw API JSON in a `<details>` block for debugging. |
 | Port 3000 in use | Standard Next.js fallback to 3001 + console message. No custom handling. |
-| Filesystem is slow on first load | Parsers run in parallel via `Promise.all`. Target: < 1.5s for full scan on a warm disk. |
+| Filesystem is slow on first load | Parsers run in parallel via `Promise.all`. Target: < 1.5s for full parser pass on a warm disk (this is parser time only, not the end-to-end first-render budget in success criterion 7). |
 
 ## 8. Testing strategy
 
@@ -289,14 +353,17 @@ Pragmatic V1, not over-engineered. All tests pure or filesystem-fixture-based.
 
 ### 8.1 Test surface
 
-| Area | Approach | Approx test count |
+| Area | Approach | Test count |
 | --- | --- | --- |
+| `paths.ts` | Unit tests on root resolution + override behavior | 2 |
 | Each parser | Vitest unit tests against `lib/parsers/__fixtures__/<parser>/` | 5 per parser × 5 parsers = 25 |
-| Classifier | Unit tests on `assignCluster()` and `assignStatus()` with synthetic node inputs | 10 |
-| Merger | Unit tests on dedupe + merge precedence | 4 |
+| `merge.ts` | Unit tests on dedupe + merge precedence (incl. id-collision fixture) | 4 |
+| `classify.ts` | Unit tests on `assignCluster()` and `assignStatus()` (closed keyword sets make these straightforward) | 10 |
 | API route | Integration test pointing at `__fixtures__/`, asserts `AtlasResponse` shape and counts | 3 |
 | Components | **Skipped for V1.** Visual is the spec. Manual eyeballing on localhost is the test. Add Playwright later if it goes public. |
 | E2E | **Skipped for V1.** |
+
+**Total: 44 tests.** Acceptance threshold: all 44 pass.
 
 ### 8.2 Test conventions
 
@@ -316,7 +383,7 @@ Pragmatic V1, not over-engineered. All tests pure or filesystem-fixture-based.
 
 Bite-sized units the implementing agent should ship in order. Each unit ends in a passing test or a verifiable visual artifact.
 
-1. **Init Next.js project** — `npm create next-app@latest claude-os-atlas-web --ts --tailwind --app --no-eslint`. Move output into `Projects/claude-os-atlas/` web subdir. Verify `npm run dev` shows the default page.
+1. **Init Next.js project at the repo root** — From inside `Projects/claude-os-atlas/`, scaffold Next.js into the existing folder using `npm create next-app@latest . --ts --tailwind --app --no-eslint --import-alias "@/*"`. The CLI will prompt to add files to the non-empty directory; accept. Verify `package.json`, `app/`, and `next.config.ts` land at repo root and the existing `docs/` and `.gitignore` are preserved. Run `npm run dev` and confirm the default page renders at `localhost:3000`.
 2. **lib/types.ts** — Define all schema types. No tests yet.
 3. **lib/paths.ts** — Resolve home dir + project roots. Unit test that defaults match `~/`.
 4. **parseMemoryIndex** — Parser + 5 unit tests against fixture.
@@ -353,6 +420,6 @@ Implementation is done when, on a clean machine:
 - [ ] Clicking any node selects it: status pill, label, metadata, linked nodes, body all populate
 - [ ] Filter chips correctly hide/show node groups
 - [ ] Stats bar matches actual counts in the response payload
-- [ ] All 30+ unit tests pass via `npm test`
+- [ ] All 44 unit tests pass via `npm test`
 - [ ] No console errors on first load
 - [ ] Looks recognizably like `mockup-a-constellation.excalidraw`
