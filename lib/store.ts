@@ -15,7 +15,7 @@ interface AtlasStore {
 
 export const useAtlasStore = create<AtlasStore>((set) => ({
   selectedId: null,
-  activeFilter: 'all',
+  activeFilter: 'project',
   setSelected: (id) => set({ selectedId: id }),
   setFilter: (filter) => set({ activeFilter: filter }),
 }))
