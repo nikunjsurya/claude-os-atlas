@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "snapshot": "tsx scripts/build-snapshot.ts"
   },
   "dependencies": {
     "next": "16.2.4",
@@ -24,6 +25,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.5",
     "tailwindcss": "^4",
+    "tsx": "^4.22.1",
     "typescript": "^5",
     "vitest": "^4.1.5"
   }

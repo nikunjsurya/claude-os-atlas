@@ -13,8 +13,26 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "claude OS / atlas",
-  description: "the constellation of what I've built",
+  title: "claude OS — atlas",
+  description:
+    "A force-directed map of every project, skill, and tool Surya has built. Auto-derived from his filesystem.",
+  openGraph: {
+    title: "claude OS — atlas",
+    description:
+      "A force-directed map of every project, skill, and tool Surya has built.",
+    type: "website",
+    siteName: "claude OS",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "claude OS — atlas",
+    description:
+      "A force-directed map of every project, skill, and tool Surya has built.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

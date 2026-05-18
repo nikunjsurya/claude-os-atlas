@@ -52,7 +52,7 @@ export default function NodeDetailPanel({ data }: Props) {
     // not worth highlighting in the legend).
     const legendClusters = data.clusters.filter((c) => c.id !== 'meta')
     return (
-      <aside className="flex h-full w-[380px] flex-col border-l border-[#2A2D34] bg-[#15171D]">
+      <aside className="hidden h-full w-full shrink-0 flex-col border-l border-[#2A2D34] bg-[#15171D] md:flex md:w-[380px]">
         <div className="flex-1 overflow-y-auto p-6">
           <div className="text-[11px] uppercase tracking-wider text-[#6B7280]">Pick a node</div>
           <div className="mt-2 text-[15px] leading-snug text-[#E6E8EE]">
@@ -93,7 +93,7 @@ export default function NodeDetailPanel({ data }: Props) {
   const lastTouched = formatDate(selected.lastTouched)
 
   return (
-    <aside className="flex h-full w-[380px] flex-col border-l border-[#2A2D34] bg-[#15171D]">
+    <aside className="hidden h-full w-full shrink-0 flex-col border-l border-[#2A2D34] bg-[#15171D] md:flex md:w-[380px]">
       <div className="flex-1 overflow-y-auto p-6">
         {/* Status pill */}
         <div className="flex items-center gap-3">
