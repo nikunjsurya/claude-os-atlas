@@ -230,10 +230,13 @@ export default function ConstellationCanvas({ data }: Props) {
           }}
           nodePointerAreaPaint={(node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
             if (typeof node.x !== 'number' || typeof node.y !== 'number') return
+            // Hit area is generous: max of (visible radius + 6) and a 12px
+            // floor so even tiny nodes are reliably clickable.
             const r = (node.size ?? 14) / 4
+            const hitR = Math.max(r + 6, 12)
             ctx.fillStyle = color
             ctx.beginPath()
-            ctx.arc(node.x, node.y, r + 2, 0, 2 * Math.PI, false)
+            ctx.arc(node.x, node.y, hitR, 0, 2 * Math.PI, false)
             ctx.fill()
           }}
         />

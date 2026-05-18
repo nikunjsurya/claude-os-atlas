@@ -34,7 +34,13 @@ export async function parseAgents(roots: string[]): Promise<ParserResult> {
       if (!entry.isFile()) continue
       if (!entry.name.toLowerCase().endsWith('.md')) continue
       const filePath = path.join(root, entry.name)
-      const body = await fs.readFile(filePath, 'utf8')
+      let body: string
+      try {
+        body = await fs.readFile(filePath, 'utf8')
+      } catch {
+        warnings.push(`parseAgents: read failed for ${filePath}`)
+        continue
+      }
       const fm = parseFrontmatter(body)
       const name = fm.name ?? entry.name.replace(/\.md$/i, '')
       const description = fm.description ?? ''

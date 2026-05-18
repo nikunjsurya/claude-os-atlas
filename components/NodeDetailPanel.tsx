@@ -180,11 +180,18 @@ export default function NodeDetailPanel({ data }: Props) {
         <ActionButton
           label="View memory"
           color="#6B7280"
-          href={selected.links.memoryFile ? `file://${selected.source.path}` : undefined}
+          href={selected.links.memoryFile ? toFileUrl(selected.source.path) : undefined}
         />
       </div>
     </aside>
   )
+}
+
+// Convert an absolute filesystem path to a file:// URL that works in browsers
+// on Windows (backslashes -> forward slashes, drive letters get the extra slash).
+function toFileUrl(p: string): string {
+  const fwd = p.replace(/\\/g, '/')
+  return fwd.startsWith('/') ? `file://${fwd}` : `file:///${fwd}`
 }
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
