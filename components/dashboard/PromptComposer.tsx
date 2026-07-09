@@ -1,5 +1,6 @@
-// Editable prompt + terminal picker + the Start button that POSTs
-// /api/launch. The click-to-work half of mission control.
+// Editable prompt + terminal picker + Start. The launch button is the one
+// place the deck spends amber on an action: it is the reason the screen
+// exists.
 
 'use client'
 
@@ -49,42 +50,43 @@ export default function PromptComposer({
 
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase tracking-widest text-[#6B7280]">
+      <h4 className="text-[11px] uppercase tracking-[0.12em] text-deck-dim">
         Work on it
       </h4>
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         rows={8}
-        className="mt-2 w-full rounded border border-[#2A2D34] bg-[#0E1014] p-2 text-sm text-[#E6E8EE] focus:border-[#6B7280] focus:outline-none"
+        className="mt-2 w-full rounded-[3px] border border-deck-hair bg-deck-bg p-2.5 text-sm text-deck-ink focus:border-deck-dim focus:outline-none"
       />
       <div className="mt-2 flex items-center gap-2">
         <select
           value={terminal}
           onChange={(e) => setTerminal(e.target.value as 'warp' | 'wt')}
-          className="rounded border border-[#2A2D34] bg-[#0E1014] px-2 py-1 text-sm text-[#E6E8EE]"
+          className="rounded-[3px] border border-deck-hair bg-deck-bg px-2 py-1.5 font-mono text-xs text-deck-dim"
         >
-          <option value="warp">Warp</option>
-          <option value="wt">Windows Terminal</option>
+          <option value="warp">warp</option>
+          <option value="wt">windows terminal</option>
         </select>
         <button
           type="button"
           disabled={!canLaunch || state === 'launching'}
           onClick={launch}
-          className="rounded bg-[#E07B4E] px-4 py-1.5 text-sm font-medium text-[#0E1014] disabled:opacity-40"
+          className="rounded-[3px] bg-deck-amber px-4 py-1.5 text-sm font-medium text-deck-bg disabled:opacity-30"
         >
           {state === 'launching' ? 'starting…' : 'Start Claude session'}
         </button>
       </div>
       {projectId === null && (
-        <div className="mt-2 text-xs text-[#6B7280]">
-          this item has no project directory; launch is disabled
+        <div className="mt-2 font-mono text-[11px] text-deck-dim">
+          no project directory on this item; launch disabled
         </div>
       )}
       {message && (
         <div
-          className={`mt-2 text-xs ${state === 'error' ? 'text-[#D9534F]' : 'text-[#5AA77A]'}`}
+          className={`mt-2 font-mono text-xs ${state === 'error' ? 'text-deck-amber' : 'text-deck-dim'}`}
         >
+          {state === 'error' ? '▲ ' : ''}
           {message}
         </div>
       )}

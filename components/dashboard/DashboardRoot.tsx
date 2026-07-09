@@ -1,7 +1,9 @@
-// Mission control client root: owns polling (n8n 30s, sites+queue 60s,
-// projects 120s, focus/mutation refetch), the session token, and the
-// drawer. Phase B skeleton; Phase C restyles through the taste gate.
-// Spec: 2026-07-09-mission-control-v2-design.md sections 1, 4.2.
+// Mission control, flight-deck direction (picked 2026-07-09).
+// The deck is read in half a second in the dark: a mono status line, the
+// site instruments, a quiet inventory, and one amber column of things
+// waiting for a hand. Poll cadence: n8n 30s, sites+queue 60s, projects
+// 120s, refetch on focus and after mutations.
+// Spec: 2026-07-09-mission-control-v2-design.md sections 1, 4.2, 8.
 
 'use client'
 
@@ -83,29 +85,64 @@ export default function DashboardRoot() {
     [token, queue]
   )
 
+  const recapture = useCallback(async () => {
+    if (!token) return
+    await fetch('/api/pulse/sites/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Atlas-Token': token,
+      },
+      body: '{}',
+    }).catch(() => null)
+  }, [token])
+
+  const openCount = queue.data?.items.filter((i) => i.status === 'open').length ?? null
+  const flagged =
+    projects.data?.filter((p) => p.git && (p.git.dirty > 0 || p.git.ahead > 0)).length ?? null
+  const failing = n8n.data?.recentErrors.length ?? null
+
   return (
-    <div className="min-h-screen bg-[#0E1014] p-4 text-[#E6E8EE]">
-      <header className="mb-4 flex items-baseline gap-3">
-        <h1 className="text-lg font-semibold">claude OS · mission control</h1>
-        <a href="/map" className="text-sm text-[#6B7280] hover:text-[#E6E8EE]">
+    <div className="min-h-screen bg-deck-bg px-10 py-8 font-sans text-deck-ink">
+      {/* status line: the half-second read */}
+      <div className="flex items-baseline gap-6 pb-6 font-mono text-xs text-deck-dim">
+        <span className="font-semibold tracking-[0.08em] text-deck-ink">CLAUDE OS</span>
+        <a href="/map" className="hover:text-deck-ink">
           map →
         </a>
-        {queue.data?.warnings.map((w) => (
-          <span key={w} className="text-xs text-[#E07B4E]">
-            {w}
+        {sites.data && (
+          <span>
+            {sites.data.filter((s) => s.status === 'ok').length}/{sites.data.length} sites up
           </span>
-        ))}
-      </header>
+        )}
+        {n8n.data && (
+          <span className={failing ? 'text-deck-amber' : undefined}>
+            {n8n.data.workflows.length} flows · {failing} failing
+          </span>
+        )}
+        {flagged !== null && <span>{flagged} repos unsynced</span>}
+        <span
+          className="ml-auto"
+          style={{ color: openCount ? 'var(--deck-amber)' : 'var(--deck-dim)' }}
+        >
+          ● {openCount ?? '…'} waiting on you
+        </span>
+      </div>
 
-      <div className="grid grid-cols-[1fr_360px] gap-4">
-        <div className="space-y-4">
-          <SiteCardZone sites={sites.data} />
-          <ProjectGrid projects={projects.data} onSelect={openProject} />
+      {queue.data?.warnings.map((w) => (
+        <div key={w} className="pb-3 font-mono text-[11px] text-deck-amber">
+          ▲ {w}
         </div>
-        <div className="space-y-4">
-          <QueuePanel items={queue.data?.items ?? null} onSelect={openItem} />
+      ))}
+
+      <SiteCardZone sites={sites.data} onRecapture={token ? recapture : null} />
+
+      <div className="mt-12 grid grid-cols-[1fr_380px] gap-16">
+        <div className="space-y-10">
+          <ProjectGrid projects={projects.data} onSelect={openProject} />
           <N8nRail pulse={n8n.data} />
         </div>
+        <QueuePanel items={queue.data?.items ?? null} onSelect={openItem} />
       </div>
 
       <DetailDrawer

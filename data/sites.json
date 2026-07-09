@@ -1,5 +1,5 @@
 [
   { "id": "aetherbloom", "label": "Aetherbloom", "url": "https://atherbloom.com" },
-  { "id": "topsnip", "label": "TopSnip", "url": "https://topsnip.co" },
+  { "id": "topsnip", "label": "TopSnip", "url": "https://www.topsnip.co/feed" },
   { "id": "mindward", "label": "Mindward", "url": "https://mindward-web.vercel.app" }
 ]

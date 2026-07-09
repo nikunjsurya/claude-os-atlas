@@ -1,18 +1,19 @@
-// Shared status dot. Colors follow the V1 palette tokens.
+// Deck light. One accent rule: amber for anything needing a hand,
+// dim green for healthy, faint for unknown. No red; amber IS the alarm.
 
 import type { PulseStatus } from '@/lib/types'
 
 const COLORS: Record<PulseStatus, string> = {
-  ok: '#5AA77A',
-  warn: '#E07B4E',
-  error: '#D9534F',
-  unknown: '#6B7280',
+  ok: 'var(--deck-ok)',
+  warn: 'var(--deck-amber)',
+  error: 'var(--deck-amber)',
+  unknown: 'var(--deck-faint)',
 }
 
 export default function PulseDot({ status }: { status: PulseStatus }) {
   return (
     <span
-      className="inline-block h-2 w-2 shrink-0 rounded-full"
+      className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
       style={{ backgroundColor: COLORS[status] }}
       title={status}
     />

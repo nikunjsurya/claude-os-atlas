@@ -1,14 +1,9 @@
-// Pending-work queue: what is waiting on Surya, grouped open-first.
+// Needs a hand: the only bright column on the deck. Incidents first with
+// the amber caution mark; owner actions and claude tasks in ink below.
 
 'use client'
 
 import type { QueueItem } from '@/lib/types'
-
-const KIND_LABEL: Record<QueueItem['kind'], string> = {
-  incident: 'incident',
-  'owner-action': 'owner action',
-  'claude-task': 'claude task',
-}
 
 export default function QueuePanel({
   items,
@@ -17,39 +12,52 @@ export default function QueuePanel({
   items: QueueItem[] | null
   onSelect: (item: QueueItem) => void
 }) {
-  if (!items) return <div className="text-sm text-[#6B7280]">loading queue…</div>
+  if (!items) {
+    return <div className="font-mono text-xs text-deck-dim">reading the queue…</div>
+  }
   const open = items.filter((i) => i.status === 'open')
-  const closed = items.filter((i) => i.status !== 'open')
+  const incidents = open.filter((i) => i.kind === 'incident')
+  const rest = open.filter((i) => i.kind !== 'incident')
+  const closed = items.length - open.length
+
   return (
     <section>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-[#6B7280]">
-        Pending ({open.length})
+      <h2 className="pb-3 text-[11px] uppercase tracking-[0.12em] text-deck-amber">
+        Needs a hand · {open.length}
       </h2>
-      <ul className="space-y-1">
-        {open.map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(item)}
-              className="w-full rounded border border-[#2A2D34] bg-[#15171D] px-3 py-2 text-left text-sm text-[#E6E8EE] hover:border-[#6B7280]"
-            >
-              <span
-                className={
-                  item.kind === 'incident' ? 'text-[#D9534F]' : 'text-[#6B7280]'
-                }
-              >
-                [{KIND_LABEL[item.kind]}]
-              </span>{' '}
-              {item.title}
-            </button>
-          </li>
-        ))}
-        {open.length === 0 && (
-          <li className="text-sm text-[#6B7280]">nothing pending. clean board.</li>
-        )}
-      </ul>
-      {closed.length > 0 && (
-        <div className="mt-2 text-xs text-[#6B7280]">{closed.length} done/dismissed</div>
+      {open.length === 0 && (
+        <div className="font-mono text-xs text-deck-dim">
+          deck is dark. nothing needs you.
+        </div>
+      )}
+      {incidents.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onSelect(item)}
+          className="block w-full border-b border-deck-hair py-2 text-left hover:bg-deck-panel"
+        >
+          <span className="text-sm text-deck-amber">▲ {item.title}</span>
+        </button>
+      ))}
+      {rest.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onSelect(item)}
+          className="block w-full border-b border-deck-hair py-2 text-left hover:bg-deck-panel"
+        >
+          <span className="block text-sm text-deck-ink">{item.title}</span>
+          <span className="block pt-0.5 font-mono text-[11px] text-deck-dim">
+            {item.kind}
+            {item.projectId ? ` · ${item.projectId.replace('project-', '')}` : ''}
+          </span>
+        </button>
+      ))}
+      {closed > 0 && (
+        <div className="pt-2 font-mono text-[11px] text-deck-faint">
+          {closed} done or dismissed
+        </div>
       )}
     </section>
   )
