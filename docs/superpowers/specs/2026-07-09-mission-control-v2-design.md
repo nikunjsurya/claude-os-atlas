@@ -25,7 +25,7 @@ The V1 constellation stays, demoted to a `/map` tab. The dashboard becomes `/`.
 ## 2. Non-goals
 
 - No headless / in-browser Claude execution. V2 launches a *terminal you own*; it does not run agents itself. (V3 candidate.)
-- No auth, no deploy, no public URL, no mobile layout (min viewport 1280×800, same as V1).
+- No auth, no NEW public surface (the existing snapshot build stays constellation-only, §4.4), no mobile layout (min viewport 1280×800, same as V1).
 - No writes to n8n (read-only API usage), no editing of memory/vault files from the UI.
 - Queue "done/dismiss" state changes are allowed (writes only to the gitignored `data/queue-state.json`); nothing else on disk is mutated by the UI except screenshot cache and launch artifacts.
 - Public mode stays read-only constellation. `NEXT_PUBLIC_ATLAS_MODE === 'public'` builds render the sanitized snapshot exactly as V1 does today, and none of the V2 surfaces exist there (see §4.4).
@@ -38,7 +38,7 @@ The V1 constellation stays, demoted to a `/map` tab. The dashboard becomes `/`.
 3. Killing/failing an n8n workflow surfaces it in the incident rail within one poll cycle (≤60s), with the execution error message visible.
 4. Every project with uncommitted or unpushed work is visibly flagged in the project grid.
 5. Clicking a queue item opens a detail drawer with status context and an **editable** prompt; "Start in Warp" opens Warp in the right directory with `claude` running the edited prompt. Verified live at least once against Warp and once against the `wt` fallback.
-6. The constellation still fully works at `/map`; all existing tests (49 at time of writing) plus the new suite (~40) pass.
+6. The constellation still fully works at `/map`; all existing tests (49 at time of writing) plus the new suite (~42) pass.
 7. Surya has picked one of three rendered visual directions (taste gate, §8) and the shipped dashboard follows it.
 
 ## 4. Architecture
@@ -142,8 +142,8 @@ export interface ProjectPulse {
   id: string                          // V1 node id convention: 'project-<kebab>'
   label: string; path: string
   git: { branch: string; dirty: number; ahead: number; behind: number
-         lastCommitAt: string | null }          // non-git folders are excluded server-side, so git is always present
-  status: PulseStatus                 // warn if dirty>0 or ahead>0; unknown if git call failed/timed out; ok otherwise ('error' reserved, never emitted in V2)
+         lastCommitAt: string | null } | null   // null = the git call failed/timed out (status 'unknown'); non-git folders never appear at all
+  status: PulseStatus                 // warn if dirty>0 or ahead>0; unknown iff git === null; ok otherwise ('error' reserved, never emitted in V2)
 }
 
 export interface QueueItem {
@@ -168,7 +168,7 @@ export interface LaunchRequest {
 **n8n endpoints used (read-only):** `GET /api/v1/workflows?active=true` and `GET /api/v1/executions?limit=40` (filtered per workflow inside the collector, server-side; error executions additionally fetched with `status=error&limit=20`). Auth header `X-N8N-API-KEY`. Key never reaches the browser: all n8n calls are server-side; `N8nPulse` contains no secrets.
 
 **Derived queue rules (`derive.ts`, pure):**
-- n8n error execution → `incident`, id `n8n:<workflowId>` (latest error only, so one card per workflow).
+- n8n workflow whose LATEST execution errored (`lastExecution.status === 'error'`) → `incident`, id `n8n:<workflowId>`, one card per workflow. A newer successful run clears the incident (and prunes its suppression); the rail's `recentErrors` follows the same latest-run rule.
 - Site status `error` → `incident`, id `site:<siteId>`.
 - Project `dirty>0 || ahead>0` → `claude-task` "commit/push stranded work", id `git:<projectId>`.
 - Derived items whose condition has cleared disappear on next merge. A curated/derived id collision prefers curated.
@@ -182,8 +182,8 @@ export interface LaunchRequest {
 1. UI: DetailDrawer → PromptComposer seeds from `promptSeed`, user edits, picks terminal (default Warp), hits Start.
 2. `POST /api/launch` validates: projectId resolves to a real allowlisted directory (the project-grid set + `projects-extra.json`); prompt length bounds; terminal enum.
 3. `plan.ts` produces a `LaunchPlan`: prompt written to `data/launch/<timestamp>-<projectId>.md` (gitignored); the command **always receives the prompt via file read, never via string interpolation into a shell line built from user input**.
-4. Warp path: write YAML to the Warp launch-config location (believed `%APPDATA%\warp\Warp\launch_configurations\atlas.yaml`; the directory AND the accepted `warp://launch/...` form are both determined empirically in the same Phase B step, then locked in a code comment + test fixture; create dir if absent) with `cwd` = project path and a command that makes the shell read the prompt from the file at runtime, e.g. `claude "$(Get-Content -Raw '<promptFile>')"`. The command line embeds only the prompt file PATH, never prompt content, so quoting and the 32k Windows command-line limit are non-issues.
-5. `wt` fallback: `wt -d <projectPath> powershell -NoExit -Command "claude (Get-Content -Raw '<promptFile>')"`. Windows PowerShell 5.1 is always present on Win11; `pwsh` is NOT preinstalled and must not be assumed. Same path-only rule.
+4. Warp path: write YAML to the Warp launch-config location (believed `%APPDATA%\warp\Warp\launch_configurations\atlas.yaml`; the directory, the accepted `warp://launch/...` form, AND the shell Warp runs commands under are all determined empirically in ONE Phase B step, then locked in a code comment + test fixture; create dir if absent) with `cwd` = project path and the command `node <repoPath>\scripts\launch-claude.mjs <promptFile>`. The shim reads the prompt file and spawns `claude` with the content as a single argv via Node `child_process` (`shell:false`), inheriting stdio so the session stays interactive. Node owns Windows argv escaping, so embedded quotes/newlines/unicode survive intact, and the visible command line contains only space-free absolute paths, making the invoking shell's quoting rules irrelevant.
+5. `wt` fallback: `wt -d <projectPath> node <repoPath>\scripts\launch-claude.mjs <promptFile>`. Same shim, same guarantees, no PowerShell in the loop: Windows PowerShell 5.1's native-arg quote mangling is exactly why the shim exists, and `pwsh` must never be assumed present.
 6. Response: `{launched: true, terminal, promptFile}`. UI toasts and marks the queue item `in-flight` visually (client-side only; no new status enum).
 
 Failure behavior: spawn error → 502 with the raw error message surfaced in the drawer; the prompt file is kept so nothing typed is ever lost.
@@ -195,6 +195,7 @@ Failure behavior: spawn error → 502 with the raw error message surfaced in the
 - `/api/launch` is the only route that spawns a process influenced by request input (`sites/refresh` spawns Chrome and `pulse/projects` spawns git, but only against committed config). It never accepts a path or a command: only an allowlisted `projectId`, a prompt (written to file), and a terminal enum. `spawn.ts` uses argv arrays (`shell:false`) except the `start`-URI hop, which contains no user-controlled bytes.
 - n8n API key stays server-side (see §5). Screenshot capture runs only against URLs from the committed `data/sites.json`, never from request input.
 - All V2 routes return 404 in public mode (§4.4).
+- `GET /api/pulse/sites` sits outside the mutating guard yet kicks background captures. Accepted deliberately: the side effect is bounded by design (single-flight per site, 6h staleness gate, URLs only from committed `data/sites.json`), so a drive-by GET can at worst refresh a screenshot that was already due.
 
 ## 8. Visual direction (taste gate): process, not prescription
 
@@ -216,7 +217,7 @@ Deliberately not specified here. Phase C runs the taste loop agreed on 2026-07-0
 | Site down | Card → error state; derived `site:` incident appears in queue. |
 | Repo git call exceeds 4s | That project renders `unknown` status; logged; others unaffected (per-repo isolation, concurrency cap 6). |
 | Warp not installed / URI launch fails | Automatic fallback to `wt`; if that also fails, 502 + drawer shows error + prompt file path. |
-| Prompt contains quotes/newlines/unicode | Irrelevant by construction: prompt travels by file (§6 step 3). Covered by fixture tests. |
+| Prompt contains quotes/newlines/unicode | Prompt travels by file (§6 step 3) and becomes a single argv inside the Node shim, never marshalled by PowerShell 5.1 (whose native-arg passing mangles embedded quotes). Shim has an argv-fidelity test via a child echo script; Phase B live verification MUST use a torture prompt (embedded double quotes, newlines, unicode). The 20k prompt cap is what keeps the child argv under the 32k Windows limit. |
 | `queue.json` / `queue-state.json` malformed | Back up to `<name>.bad-<ts>`, continue with empty curated set / fresh runtime state + visible warning banner. |
 | Two dashboard tabs open | Collector TTL cache makes polling cheap; queue writes atomic via tmp+rename; last writer wins (single human user). |
 | Dev server not running | Nothing works, by design. `npm run dev` is the on-switch. (Auto-start on boot = V3 candidate, out of scope.) |
@@ -234,7 +235,8 @@ Same philosophy as V1: pure logic gets unit tests, visuals get eyeballs, side ef
 | `launch/plan.ts` + `warpConfig.ts` (allowlist reject, path traversal reject, YAML shape, argv shape, prompt-file contract) | pure / dry-run | 7 |
 | API routes: queue GET merge, PATCH, launch POST validation | integration w/ fixtures, spawn mocked | 5 |
 | Mutating-route guard (§7): each leg rejected independently + public-mode 404 | integration, spawn mocked | 5 |
-| **New total** | | **~41** |
+| Launch shim argv fidelity (child echo process: quotes/newlines/unicode) | integration | 1 |
+| **New total** | | **~42** |
 
 All existing tests must keep passing (49 at time of writing; the V1 spec's "44" drifted upward during implementation). The constellation page is extracted into one shared component: `app/map/page.tsx` renders it in both modes, and public-mode `/` keeps rendering it exactly as today. Extraction, not duplication.
 
@@ -244,7 +246,7 @@ Not tested: actual Warp/wt spawn (one live verification each, §3.5), screenshot
 
 **Phase A: collectors & contracts (no UI change).** types → n8nAuth+n8n → gitStatus → sites+screenshot → cache → queue store/derive/merge → mutating-route guard + public-mode 404 helper → API routes → tests green. Ends: `curl` of each route returns real machine data.
 
-**Phase B: skeleton + launch (ugly on purpose).** Relocate constellation to `/map` → DashboardRoot + four zones with unstyled real data → DetailDrawer + PromptComposer → launch route + `plan/warpConfig/spawn` → **live launch verified in Warp and wt** → seed `data/queue.json` from sweep owner-actions. Ends: the whole loop works end-to-end, looks like a wireframe.
+**Phase B: skeleton + launch (ugly on purpose).** Extract the constellation page into a shared component rendered at `/map` (and by public-mode `/`) → DashboardRoot + four zones with unstyled real data → DetailDrawer + PromptComposer → launch route + `plan/warpConfig/spawn` + `scripts/launch-claude.mjs` shim → **live launch verified in Warp and wt with a torture prompt (quotes + newlines + unicode)** → seed `data/queue.json` from sweep owner-actions. Ends: the whole loop works end-to-end, looks like a wireframe.
 
 **Phase C: taste gate + polish.** Three rendered directions → Surya picks → apply direction across all zones → fable-lens pass → empty states, loading states, keyboard niceties (`/` focus queue, `Esc` closes drawer) → final test + visual sweep.
 
@@ -259,6 +261,6 @@ Each phase ends with a commit on `v2-mission-control`; merge to main only after 
 - [ ] Queue item → drawer → edit prompt → Start in Warp → Warp opens in project dir, claude running edited prompt
 - [ ] Same flow with `wt` fallback verified once
 - [ ] `data/queue.json` seeded with sweep owner-actions; done/dismiss persists across reload
-- [ ] Full suite passes (`npm test`): all pre-existing tests plus ~41 new; no console errors on load
+- [ ] Full suite passes (`npm test`): all pre-existing tests plus ~42 new; no console errors on load
 - [ ] Guard verified: cross-origin/tokenless POST to `/api/launch` rejected (tested); public-mode build 404s every V2 route
 - [ ] Direction picked by Surya applied everywhere; taste memory saved
