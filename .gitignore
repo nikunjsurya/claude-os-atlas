@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# mission control V2 runtime artifacts (spec 2026-07-09 section 4.3)
+/public/shots/
+/data/queue-state.json
+/data/queue-state.json.bad-*
+/data/queue.json.bad-*
+/data/launch/
