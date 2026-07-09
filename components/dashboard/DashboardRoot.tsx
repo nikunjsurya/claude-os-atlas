@@ -14,6 +14,7 @@ import SiteCardZone from './SiteCardZone'
 import N8nRail from './N8nRail'
 import ProjectGrid from './ProjectGrid'
 import QueuePanel from './QueuePanel'
+import DeckMap from './DeckMap'
 import DetailDrawer from './DetailDrawer'
 import type { DrawerTarget } from './DetailDrawer'
 
@@ -139,6 +140,23 @@ export default function DashboardRoot() {
 
       <div className="mt-12 grid grid-cols-[1fr_380px] gap-16">
         <div className="space-y-10">
+          <section>
+            <div className="flex items-baseline justify-between pb-3">
+              <h2 className="text-[11px] uppercase tracking-[0.12em] text-deck-dim">
+                System map
+              </h2>
+              <a href="/map" className="font-mono text-[11px] text-deck-faint hover:text-deck-dim">
+                full map →
+              </a>
+            </div>
+            <div className="relative h-[300px] overflow-hidden rounded-[3px] border border-deck-hair">
+              <DeckMap
+                projects={projects.data}
+                queueItems={queue.data?.items ?? null}
+                onSelectProject={openProject}
+              />
+            </div>
+          </section>
           <ProjectGrid projects={projects.data} onSelect={openProject} />
           <N8nRail pulse={n8n.data} />
         </div>

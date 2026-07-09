@@ -256,7 +256,11 @@ Not tested: actual Warp/wt spawn (one live verification each, §3.5), screenshot
 
 Each phase ends with a commit on `v2-mission-control`; merge to main only after Phase C acceptance.
 
-## 12. Acceptance checklist
+## 12. Addendum V2.1 (2026-07-09, post-ship): deck map widget
+
+Surya requested the Obsidian-style graph embedded in the dashboard. `components/dashboard/DeckMap.tsx` renders the same `/api/atlas` graph with the V1 Obsidian force parameters inside a 300px "System map" panel at the top of the left column. Deck law applies: every node is a faint star; only nodes carrying work (open queue items' projects + dirty/ahead repos) glow amber with the D1 pulse. Hover reveals the name; clicking a project node opens its drawer, anything else goes to `/map`. Two implementation facts recorded for posterity: `next/dynamic` does not forward refs (a wrapper passes the imperative handle as a prop, else d3Force/zoomToFit are silently null; V1's ConstellationCanvas has this latent issue), and canvas `ctx.font` silently rejects `var()` font strings (concrete family lists required). The always-mounted-container rule for ResizeObserver measurement is commented in the file.
+
+## 13. Acceptance checklist
 
 - [ ] Dashboard at `/` shows all four zones with real data; constellation intact at `/map`
 - [ ] All three site cards show fresh screenshots + latency; kill-test one site → error state
