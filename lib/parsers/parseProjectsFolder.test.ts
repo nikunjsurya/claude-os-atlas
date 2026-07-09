@@ -24,6 +24,11 @@ describe('parseProjectsFolder', () => {
     expect(nodes.every((n) => n.source.type === 'folder')).toBe(true)
   })
 
+  it('skips dot-folders (.claude, .obsidian are tool state, not projects)', async () => {
+    const { nodes } = await parseProjectsFolder(FIXTURE_DIR)
+    expect(nodes.some((n) => n.label.startsWith('.'))).toBe(false)
+  })
+
   it('marks folders containing PARKED.md with a parked hint in description', async () => {
     const { nodes } = await parseProjectsFolder(FIXTURE_DIR)
     const hidden = nodes.find((n) => n.id === 'project-hidden-systems')!

@@ -43,6 +43,9 @@ export async function parseProjectsFolder(
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
+    // Dot-folders (.claude, .obsidian) are tool state, not projects; they
+    // also kebab into broken ids like project--claude.
+    if (entry.name.startsWith('.')) continue
     const folderName = entry.name
     const folderPath = path.join(projectsRoot, folderName)
     const id = `project-${kebab(folderName)}`

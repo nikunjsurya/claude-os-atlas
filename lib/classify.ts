@@ -97,6 +97,12 @@ export function assignCluster(
     return 'meta'
   }
 
+  // A docs-only project folder (no package.json, no keywords) is a normal
+  // shape of Projects/: strategy, research, workflow notes. Same for agents
+  // that carry no voice keywords: they are system machinery. Meta, silently;
+  // warning about each one buried the map under a wall of noise.
+  if (node.kind === 'project' || node.kind === 'agent') return 'meta'
+
   const msg = `unclassified: ${node.id}`
   console.warn(msg)
   ctx.warnings?.push(msg)

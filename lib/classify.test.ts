@@ -73,6 +73,42 @@ describe('assignCluster', () => {
     expect(assignCluster(n)).toBe('meta')
   })
 
+  it('does not warn for docs-only projects; that is a normal Projects/ shape', () => {
+    const ctx = { warnings: [] as string[] }
+    const n = makeNode({
+      kind: 'project',
+      label: 'ai-linkedin-autopilot',
+      description: 'strategy and workflow notes',
+      source: { path: '/tmp/no-pkg-here', type: 'folder' },
+    })
+    expect(assignCluster(n, ctx)).toBe('meta')
+    expect(ctx.warnings).toEqual([])
+  })
+
+  it('classifies keyword-less agents as meta without warning', () => {
+    const ctx = { warnings: [] as string[] }
+    const n = makeNode({
+      id: 'agent-code-simplifier',
+      kind: 'agent',
+      label: 'code-simplifier',
+      description: 'refines code for clarity',
+    })
+    expect(assignCluster(n, ctx)).toBe('meta')
+    expect(ctx.warnings).toEqual([])
+  })
+
+  it('still warns for kinds outside the known union (future safety net)', () => {
+    const ctx = { warnings: [] as string[] }
+    const n = makeNode({
+      id: 'widget-1',
+      kind: 'widget' as ParsedNode['kind'],
+      label: 'widget',
+      description: 'no keywords here',
+    })
+    expect(assignCluster(n, ctx)).toBe('meta')
+    expect(ctx.warnings.length).toBe(1)
+  })
+
   it('resolves the remotion overlap correctly: infra for non-projects, content for projects', () => {
     expect(
       assignCluster(
