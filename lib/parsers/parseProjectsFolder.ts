@@ -6,7 +6,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { ParsedNode, ParserResult } from '../types'
 
-function kebab(name: string): string {
+export function kebab(name: string): string {
   return name
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-zA-Z0-9-]/g, '-')

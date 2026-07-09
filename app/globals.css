@@ -18,6 +18,18 @@
   --cluster-voice: #9F7AEA;
   --cluster-infra: #5AA77A;
   --cluster-meta: #6B7280;
+
+  /* Flight deck (mission control V2, direction picked 2026-07-09).
+     One accent: amber is the caution light, spent only on things that
+     need Surya's hand. Everything healthy stays dim. */
+  --deck-bg: #0B0E13;
+  --deck-panel: #0E1218;
+  --deck-hair: #1A2029;
+  --deck-ink: #D9DEE7;
+  --deck-dim: #5C6470;
+  --deck-faint: #39414D;
+  --deck-amber: #E8A33D;
+  --deck-ok: #4E5F52;
 }
 
 @theme inline {
@@ -26,6 +38,14 @@
   --color-border: var(--border);
   --color-ink: var(--ink);
   --color-ink-dim: var(--ink-dim);
+  --color-deck-bg: var(--deck-bg);
+  --color-deck-panel: var(--deck-panel);
+  --color-deck-hair: var(--deck-hair);
+  --color-deck-ink: var(--deck-ink);
+  --color-deck-dim: var(--deck-dim);
+  --color-deck-faint: var(--deck-faint);
+  --color-deck-amber: var(--deck-amber);
+  --color-deck-ok: var(--deck-ok);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
