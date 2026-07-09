@@ -57,16 +57,44 @@ export default function DeckMap({
   projects,
   queueItems,
   onSelectProject,
+  focusId,
+  onFocus,
 }: {
   projects: ProjectPulse[] | null
   queueItems: QueueItem[] | null
   onSelectProject: (project: ProjectPulse) => void
+  focusId: string | null
+  onFocus: (id: string | null) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const fgRef = useRef<ForceGraphRef>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [atlas, setAtlas] = useState<AtlasResponse | null>(null)
   const hoveredIdRef = useRef<string | null>(null)
+  const focusIdRef = useRef<string | null>(null)
+  focusIdRef.current = focusId
+  // Launch ripples: projectId -> start timestamp. Drawn for ~1.6s.
+  const ripplesRef = useRef<Map<string, number>>(new Map())
+  const reducedMotionRef = useRef(false)
+
+  useEffect(() => {
+    reducedMotionRef.current = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    ).matches
+  }, [])
+
+  // A launched session answers with a ripple at its node: the map shows
+  // WHERE work just started. Causality, not decoration.
+  useEffect(() => {
+    const onLaunched = (e: Event) => {
+      const id = (e as CustomEvent<{ projectId?: string }>).detail?.projectId
+      if (id && !reducedMotionRef.current) {
+        ripplesRef.current.set(id, performance.now())
+      }
+    }
+    window.addEventListener('atlas:launched', onLaunched)
+    return () => window.removeEventListener('atlas:launched', onLaunched)
+  }, [])
 
   useEffect(() => {
     fetch('/api/atlas')
@@ -184,8 +212,10 @@ export default function DeckMap({
           linkColor={() => 'rgba(150, 160, 175, 0.07)'}
           linkWidth={() => 0.5}
           onNodeHover={(node: { id?: string | number } | null) => {
-            hoveredIdRef.current =
-              node && typeof node.id === 'string' ? node.id : null
+            const id = node && typeof node.id === 'string' ? node.id : null
+            hoveredIdRef.current = id
+            // Only project nodes participate in cross-highlighting.
+            onFocus(id && pulseById.has(id) ? id : null)
           }}
           onNodeClick={(node: { id?: string | number }) => {
             if (typeof node.id !== 'string') return
@@ -201,7 +231,8 @@ export default function DeckMap({
           ) => {
             if (typeof node.x !== 'number' || typeof node.y !== 'number') return
             const hot = hotIds.has(node.id)
-            const hovered = node.id === hoveredIdRef.current
+            const hovered =
+              node.id === hoveredIdRef.current || node.id === focusIdRef.current
             // Constant SCREEN-pixel sizes: zoomToFit shrinks the camera far
             // below 1, so graph-unit radii would vanish. Divide by scale.
             const rPx = hot ? 3.5 : node.kind === 'project' ? 2.8 : 2.2
@@ -209,12 +240,29 @@ export default function DeckMap({
 
             if (hot) {
               // The caution light: slow 3s pulse, per D1's node law.
-              const t = (Date.now() % 3000) / 3000
-              const pulse = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI)
+              // Under prefers-reduced-motion the halo holds still.
+              const pulse = reducedMotionRef.current
+                ? 0.5
+                : 0.5 + 0.5 * Math.sin(((Date.now() % 3000) / 3000) * 2 * Math.PI)
               ctx.beginPath()
               ctx.arc(node.x, node.y, r + (3 + 2 * pulse) / globalScale, 0, 2 * Math.PI)
               ctx.fillStyle = `rgba(${AMBER.r}, ${AMBER.g}, ${AMBER.b}, ${0.10 + 0.08 * pulse})`
               ctx.fill()
+            }
+
+            // Launch ripple: one expanding ring, then gone.
+            const rippleStart = ripplesRef.current.get(node.id)
+            if (rippleStart !== undefined) {
+              const t = (performance.now() - rippleStart) / 1600
+              if (t >= 1) {
+                ripplesRef.current.delete(node.id)
+              } else {
+                ctx.beginPath()
+                ctx.arc(node.x, node.y, r + (4 + 34 * t) / globalScale, 0, 2 * Math.PI)
+                ctx.strokeStyle = `rgba(${AMBER.r}, ${AMBER.g}, ${AMBER.b}, ${0.55 * (1 - t)})`
+                ctx.lineWidth = 1.5 / globalScale
+                ctx.stroke()
+              }
             }
 
             const c = hot ? AMBER : node.kind === 'project' ? DIM : FAINT

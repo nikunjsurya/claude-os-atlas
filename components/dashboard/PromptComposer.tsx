@@ -42,6 +42,10 @@ export default function PromptComposer({
       }
       setState('launched')
       setMessage(`claude is starting in ${body.terminal}`)
+      // The map answers with a ripple at this project's node.
+      window.dispatchEvent(
+        new CustomEvent('atlas:launched', { detail: { projectId } })
+      )
     } catch (err) {
       setState('error')
       setMessage((err as Error).message)

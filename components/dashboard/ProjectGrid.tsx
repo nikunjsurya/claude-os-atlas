@@ -9,9 +9,13 @@ import type { ProjectPulse } from '@/lib/types'
 export default function ProjectGrid({
   projects,
   onSelect,
+  focusId,
+  onFocus,
 }: {
   projects: ProjectPulse[] | null
   onSelect: (project: ProjectPulse) => void
+  focusId: string | null
+  onFocus: (id: string | null) => void
 }) {
   if (!projects) {
     return <div className="font-mono text-xs text-deck-dim">scanning repos…</div>
@@ -29,9 +33,19 @@ export default function ProjectGrid({
               key={p.id}
               type="button"
               onClick={() => onSelect(p)}
-              className="flex items-baseline gap-2 border-b border-deck-hair py-[7px] text-left text-sm hover:bg-deck-panel"
+              onMouseEnter={() => onFocus(p.id)}
+              onMouseLeave={() => onFocus(null)}
+              className={`flex items-baseline gap-2 border-b py-[7px] text-left text-sm hover:bg-deck-panel ${
+                focusId === p.id ? 'border-deck-dim bg-deck-panel' : 'border-deck-hair'
+              }`}
             >
-              <span className={hot ? 'text-deck-ink' : 'text-deck-dim'}>{p.label}</span>
+              <span
+                className={
+                  hot || focusId === p.id ? 'text-deck-ink' : 'text-deck-dim'
+                }
+              >
+                {p.label}
+              </span>
               <span
                 className={`ml-auto font-mono text-xs ${hot ? 'text-deck-amber' : 'text-deck-faint'}`}
               >

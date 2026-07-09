@@ -4,8 +4,7 @@
 
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import { getRoots } from '@/lib/paths'
-import { buildAtlasResponse } from '@/lib/buildAtlas'
+import { getAtlasCached } from '@/lib/atlasCache'
 import type { AtlasResponse } from '@/lib/types'
 import AtlasRoot from '@/components/AtlasRoot'
 import BrowserChrome from '@/components/BrowserChrome'
@@ -20,14 +19,7 @@ async function loadData(): Promise<AtlasResponse> {
     const raw = await fs.readFile(snapshotPath, 'utf8')
     return JSON.parse(raw) as AtlasResponse
   }
-  const roots = getRoots()
-  return buildAtlasResponse({
-    memoryDir: roots.memoryDir,
-    projectsRoot: roots.projects,
-    claudeSkills: roots.claudeSkills,
-    agentRoots: [roots.claudeAgents, roots.templatesAgents],
-    globalClaudeMd: roots.globalClaudeMd,
-  })
+  return getAtlasCached()
 }
 
 export default async function ConstellationPage() {

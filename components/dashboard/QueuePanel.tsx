@@ -8,9 +8,13 @@ import type { QueueItem } from '@/lib/types'
 export default function QueuePanel({
   items,
   onSelect,
+  focusId,
+  onFocus,
 }: {
   items: QueueItem[] | null
   onSelect: (item: QueueItem) => void
+  focusId: string | null
+  onFocus: (id: string | null) => void
 }) {
   if (!items) {
     return <div className="font-mono text-xs text-deck-dim">reading the queue…</div>
@@ -45,7 +49,13 @@ export default function QueuePanel({
           key={item.id}
           type="button"
           onClick={() => onSelect(item)}
-          className="block w-full border-b border-deck-hair py-2 text-left hover:bg-deck-panel"
+          onMouseEnter={() => item.projectId && onFocus(item.projectId)}
+          onMouseLeave={() => onFocus(null)}
+          className={`block w-full border-b py-2 text-left hover:bg-deck-panel ${
+            focusId !== null && focusId === item.projectId
+              ? 'border-deck-dim bg-deck-panel'
+              : 'border-deck-hair'
+          }`}
         >
           <span className="block text-sm text-deck-ink">{item.title}</span>
           <span className="block pt-0.5 font-mono text-[11px] text-deck-dim">
