@@ -31,6 +31,9 @@ export default function DashboardRoot() {
 
   const [token, setToken] = useState<string | null>(null)
   const [target, setTarget] = useState<DrawerTarget | null>(null)
+  // Cross-highlight: hovering a queue item, a project row, or a map node
+  // lights the same project everywhere. One organism, one focus.
+  const [focusId, setFocusId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/session-token')
@@ -154,13 +157,25 @@ export default function DashboardRoot() {
                 projects={projects.data}
                 queueItems={queue.data?.items ?? null}
                 onSelectProject={openProject}
+                focusId={focusId}
+                onFocus={setFocusId}
               />
             </div>
           </section>
-          <ProjectGrid projects={projects.data} onSelect={openProject} />
+          <ProjectGrid
+            projects={projects.data}
+            onSelect={openProject}
+            focusId={focusId}
+            onFocus={setFocusId}
+          />
           <N8nRail pulse={n8n.data} />
         </div>
-        <QueuePanel items={queue.data?.items ?? null} onSelect={openItem} />
+        <QueuePanel
+          items={queue.data?.items ?? null}
+          onSelect={openItem}
+          focusId={focusId}
+          onFocus={setFocusId}
+        />
       </div>
 
       <DetailDrawer

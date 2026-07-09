@@ -31,10 +31,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AtlasNode, AtlasEdge, AtlasResponse } from '@/lib/types'
 import { useAtlasStore } from '@/lib/store'
 
+// next/dynamic does NOT forward refs. Without this wrapper the imperative
+// handle is silently null: the Obsidian force params never apply and the
+// hover-tween RAF loop's refresh() is a no-op after the sim cools. The
+// wrapper passes the ref through as a plain prop.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
-  ssr: false,
-}) as unknown as React.ComponentType<Record<string, unknown>>
+const ForceGraph2D = dynamic(
+  async () => {
+    const mod = await import('react-force-graph-2d')
+    const FG = mod.default as React.ComponentType<Record<string, unknown>>
+    function ForceGraphWithRef({
+      fgRef,
+      ...props
+    }: Record<string, unknown> & { fgRef: React.Ref<unknown> }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return <FG ref={fgRef as any} {...props} />
+    }
+    return ForceGraphWithRef
+  },
+  { ssr: false }
+) as unknown as React.ComponentType<Record<string, unknown>>
 
 const STATUS_COLORS: Record<AtlasNode['status'], string> = {
   active: '#5AA77A',
@@ -67,7 +83,7 @@ const EDGE_ALPHA_INCIDENT = 0.55
 const EDGE_ALPHA_DIM = 0.04
 
 // Tween tau in ms. lerpK = 1 - exp(-dt/TWEEN_TAU). At dt=16ms that's
-// ~0.16 per frame, so a hover transition reaches 90% in ~135ms — about
+// ~0.16 per frame, so a hover transition reaches 90% in ~135ms, about
 // what Obsidian feels like.
 const TWEEN_TAU = 90
 const TWEEN_EPSILON = 0.004 // stop the RAF loop when all deltas are <= this
@@ -169,7 +185,7 @@ export default function ConstellationCanvas({ data }: Props) {
     setHoverTick((t) => t + 1)
   }, [activeFilter])
 
-  // ESC clears selection — matches Obsidian's "click empty area to
+  // ESC clears selection, matches Obsidian's "click empty area to
   // deselect" pattern, plus a keyboard shortcut.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -312,7 +328,7 @@ export default function ConstellationCanvas({ data }: Props) {
     >
       {size.width > 0 && size.height > 0 && (
         <ForceGraph2D
-          ref={fgRef}
+          fgRef={fgRef}
           graphData={graphData}
           width={size.width}
           height={size.height}
@@ -412,7 +428,8 @@ export default function ConstellationCanvas({ data }: Props) {
                 )
             if (zoomAlpha > 0.02) {
               const fontSize = Math.max(11 / globalScale, 1.8)
-              ctx.font = `${fontSize}px var(--font-geist-sans), system-ui, sans-serif`
+              // Canvas ctx.font silently rejects var() strings; concrete list.
+              ctx.font = `${fontSize}px system-ui, -apple-system, sans-serif`
               ctx.textAlign = 'center'
               ctx.textBaseline = 'top'
               ctx.fillStyle = `rgba(220, 224, 232, ${alpha * zoomAlpha * 0.92})`

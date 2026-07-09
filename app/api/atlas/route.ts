@@ -1,12 +1,11 @@
 // GET /api/atlas. Spec section 5.4: never returns 500 unless this handler
 // itself crashes. Returns 200 with partial result + warnings[] on parser
-// errors. In public mode the route serves the sanitized snapshot — the
+// errors. In public mode the route serves the sanitized snapshot, the
 // live filesystem is not available on the host.
 
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import { getRoots } from '@/lib/paths'
-import { buildAtlasResponse } from '@/lib/buildAtlas'
+import { getAtlasCached } from '@/lib/atlasCache'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,15 +21,7 @@ export async function GET() {
         headers: { 'content-type': 'application/json' },
       })
     }
-    const roots = getRoots()
-    const response = await buildAtlasResponse({
-      memoryDir: roots.memoryDir,
-      projectsRoot: roots.projects,
-      claudeSkills: roots.claudeSkills,
-      agentRoots: [roots.claudeAgents, roots.templatesAgents],
-      globalClaudeMd: roots.globalClaudeMd,
-    })
-    return Response.json(response)
+    return Response.json(await getAtlasCached())
   } catch (err) {
     return Response.json(
       {
