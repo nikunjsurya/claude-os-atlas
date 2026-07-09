@@ -1,6 +1,6 @@
 # claude OS atlas V2: mission control
 
-**Status:** Draft (pending reviewer pass)
+**Status:** Approved (reviewer pass 3)
 **Date:** 2026-07-09
 **Owner:** Surya
 **Supersedes nothing.** V1 spec (`2026-04-27-claude-os-atlas-design.md`) remains the contract for the constellation map, which V2 keeps as a secondary view.
@@ -92,7 +92,11 @@ lib/
 └── launch/
     ├── plan.ts                     (projectId, prompt, terminal) → LaunchPlan {files, argv} (pure, testable)
     ├── warpConfig.ts               LaunchPlan → launch-config YAML string (pure)
-    └── spawn.ts                    writes files, spawns process; the ONLY impure module
+    └── spawn.ts                    writes files, spawns process; the only impure lib/ module
+
+scripts/
+└── launch-claude.mjs               launch shim: reads prompt file, spawns claude with content
+                                    as one argv (shell:false, stdio inherit); impure by design
 ```
 
 ### 4.3 Config & data files
@@ -182,7 +186,7 @@ export interface LaunchRequest {
 1. UI: DetailDrawer → PromptComposer seeds from `promptSeed`, user edits, picks terminal (default Warp), hits Start.
 2. `POST /api/launch` validates: projectId resolves to a real allowlisted directory (the project-grid set + `projects-extra.json`); prompt length bounds; terminal enum.
 3. `plan.ts` produces a `LaunchPlan`: prompt written to `data/launch/<timestamp>-<projectId>.md` (gitignored); the command **always receives the prompt via file read, never via string interpolation into a shell line built from user input**.
-4. Warp path: write YAML to the Warp launch-config location (believed `%APPDATA%\warp\Warp\launch_configurations\atlas.yaml`; the directory, the accepted `warp://launch/...` form, AND the shell Warp runs commands under are all determined empirically in ONE Phase B step, then locked in a code comment + test fixture; create dir if absent) with `cwd` = project path and the command `node <repoPath>\scripts\launch-claude.mjs <promptFile>`. The shim reads the prompt file and spawns `claude` with the content as a single argv via Node `child_process` (`shell:false`), inheriting stdio so the session stays interactive. Node owns Windows argv escaping, so embedded quotes/newlines/unicode survive intact, and the visible command line contains only space-free absolute paths, making the invoking shell's quoting rules irrelevant.
+4. Warp path: write YAML to the Warp launch-config location (believed `%APPDATA%\warp\Warp\launch_configurations\atlas.yaml`; the directory, the accepted `warp://launch/...` form, AND the shell Warp runs commands under are all determined empirically in ONE Phase B step, then locked in a code comment + test fixture; create dir if absent) with `cwd` = project path and the command `node <repoPath>\scripts\launch-claude.mjs <promptFile>`. The shim reads the prompt file and spawns `claude` with the content as a single argv via Node `child_process` (`shell:false`), inheriting stdio so the session stays interactive. Node owns Windows argv escaping, so embedded quotes/newlines/unicode survive intact, and the visible command line contains only space-free absolute paths written with FORWARD slashes (valid for Node on Windows in every shell, and immune to POSIX-shell backslash eating if Warp's shell turns out to be Git Bash/WSL). Gotcha the shim must handle: an npm-global `claude` resolves to a `.cmd` shim, and Node `child_process` with `shell:false` refuses to spawn `.cmd`/`.bat` (EINVAL, post-CVE-2024-27980); the shim must resolve claude's real target (native `claude.exe`, or `node <cli.js>`) rather than fall back to `shell:true`, which would reintroduce cmd.exe marshalling.
 5. `wt` fallback: `wt -d <projectPath> node <repoPath>\scripts\launch-claude.mjs <promptFile>`. Same shim, same guarantees, no PowerShell in the loop: Windows PowerShell 5.1's native-arg quote mangling is exactly why the shim exists, and `pwsh` must never be assumed present.
 6. Response: `{launched: true, terminal, promptFile}`. UI toasts and marks the queue item `in-flight` visually (client-side only; no new status enum).
 
@@ -217,7 +221,7 @@ Deliberately not specified here. Phase C runs the taste loop agreed on 2026-07-0
 | Site down | Card → error state; derived `site:` incident appears in queue. |
 | Repo git call exceeds 4s | That project renders `unknown` status; logged; others unaffected (per-repo isolation, concurrency cap 6). |
 | Warp not installed / URI launch fails | Automatic fallback to `wt`; if that also fails, 502 + drawer shows error + prompt file path. |
-| Prompt contains quotes/newlines/unicode | Prompt travels by file (§6 step 3) and becomes a single argv inside the Node shim, never marshalled by PowerShell 5.1 (whose native-arg passing mangles embedded quotes). Shim has an argv-fidelity test via a child echo script; Phase B live verification MUST use a torture prompt (embedded double quotes, newlines, unicode). The 20k prompt cap is what keeps the child argv under the 32k Windows limit. |
+| Prompt contains quotes/newlines/unicode | Prompt travels by file (§6 step 3) and becomes a single argv inside the Node shim, never marshalled by PowerShell 5.1 (whose native-arg passing mangles embedded quotes). Shim has an argv-fidelity test via a child echo script; Phase B live verification MUST use a torture prompt (embedded double quotes, newlines, unicode). The 20k prompt cap keeps realistic prompts well under the 32k Windows limit even with escaping overhead (worst-case adversarial doubling is accepted for a single-user tool). |
 | `queue.json` / `queue-state.json` malformed | Back up to `<name>.bad-<ts>`, continue with empty curated set / fresh runtime state + visible warning banner. |
 | Two dashboard tabs open | Collector TTL cache makes polling cheap; queue writes atomic via tmp+rename; last writer wins (single human user). |
 | Dev server not running | Nothing works, by design. `npm run dev` is the on-switch. (Auto-start on boot = V3 candidate, out of scope.) |
@@ -258,8 +262,8 @@ Each phase ends with a commit on `v2-mission-control`; merge to main only after 
 - [ ] All three site cards show fresh screenshots + latency; kill-test one site → error state
 - [ ] Force-fail an n8n workflow → incident rail entry with error text within 60s
 - [ ] Dirty repo → flagged in grid AND appears as derived queue item; clean it → item disappears
-- [ ] Queue item → drawer → edit prompt → Start in Warp → Warp opens in project dir, claude running edited prompt
-- [ ] Same flow with `wt` fallback verified once
+- [ ] Queue item → drawer → edit prompt → Start in Warp → Warp opens in project dir, claude running edited prompt (with the §11 torture prompt)
+- [ ] Same flow with `wt` fallback verified once (with the §11 torture prompt)
 - [ ] `data/queue.json` seeded with sweep owner-actions; done/dismiss persists across reload
 - [ ] Full suite passes (`npm test`): all pre-existing tests plus ~42 new; no console errors on load
 - [ ] Guard verified: cross-origin/tokenless POST to `/api/launch` rejected (tested); public-mode build 404s every V2 route
