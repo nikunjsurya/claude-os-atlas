@@ -1,6 +1,7 @@
 // Header band beneath the browser chrome. Title + tagline left, filter
 // chips right. Filter chips own their own state via zustand.
 
+import Link from 'next/link'
 import FilterChips from './FilterChips'
 
 interface Props {
@@ -21,7 +22,7 @@ export default function HeaderBar({ publicMode = false }: Props) {
         <span className="text-[13px] italic text-[#6B7280] md:text-[16px]">
           {tagline}
         </span>
-        {publicMode && (
+        {publicMode ? (
           <a
             href="https://github.com/nikunjsurya/claude-os-atlas"
             target="_blank"
@@ -30,6 +31,13 @@ export default function HeaderBar({ publicMode = false }: Props) {
           >
             (source on github)
           </a>
+        ) : (
+          <Link
+            href="/"
+            className="font-mono text-[12px] text-[#6B7280] transition hover:text-[#E6E8EE]"
+          >
+            ← deck
+          </Link>
         )}
       </div>
       <FilterChips />

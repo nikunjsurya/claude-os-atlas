@@ -5,51 +5,46 @@
 'use client'
 
 import { useState } from 'react'
+import { mutateJson } from '@/lib/clientMutate'
 
 export default function PromptComposer({
   seed,
   projectId,
-  token,
 }: {
   seed: string
   projectId: string | null
-  token: string | null
 }) {
   const [prompt, setPrompt] = useState(seed)
   const [terminal, setTerminal] = useState<'warp' | 'wt'>('warp')
   const [state, setState] = useState<'idle' | 'launching' | 'launched' | 'error'>('idle')
   const [message, setMessage] = useState('')
 
-  const canLaunch = projectId !== null && token !== null && prompt.trim().length > 0
+  const canLaunch = projectId !== null && prompt.trim().length > 0
 
   async function launch() {
     if (!canLaunch) return
     setState('launching')
-    try {
-      const res = await fetch('/api/launch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Atlas-Token': token!,
-        },
-        body: JSON.stringify({ projectId, prompt, terminal }),
-      })
-      const body = (await res.json()) as { error?: string; terminal?: string }
-      if (!res.ok) {
-        setState('error')
-        setMessage(body.error ?? `launch failed (${res.status})`)
-        return
-      }
-      setState('launched')
-      setMessage(`claude is starting in ${body.terminal}`)
-      // The map answers with a ripple at this project's node.
-      window.dispatchEvent(
-        new CustomEvent('atlas:launched', { detail: { projectId } })
-      )
-    } catch (err) {
+    const res = await mutateJson('/api/launch', { projectId, prompt, terminal })
+    if (!res) {
       setState('error')
-      setMessage((err as Error).message)
+      setMessage('could not reach the server; is it running?')
+      return
     }
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string
+      terminal?: string
+    }
+    if (!res.ok) {
+      setState('error')
+      setMessage(body.error ?? `launch failed (${res.status})`)
+      return
+    }
+    setState('launched')
+    setMessage(`claude is starting in ${body.terminal}`)
+    // The map answers with a ripple at this project's node.
+    window.dispatchEvent(
+      new CustomEvent('atlas:launched', { detail: { projectId } })
+    )
   }
 
   return (
@@ -84,6 +79,11 @@ export default function PromptComposer({
       {projectId === null && (
         <div className="mt-2 font-mono text-[11px] text-deck-dim">
           no project directory on this item; launch disabled
+        </div>
+      )}
+      {projectId !== null && prompt.trim().length === 0 && (
+        <div className="mt-2 font-mono text-[11px] text-deck-dim">
+          write what claude should do, then start
         </div>
       )}
       {message && (

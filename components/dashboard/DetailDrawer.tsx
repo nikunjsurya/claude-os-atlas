@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { QueueItem } from '@/lib/types'
@@ -16,15 +16,15 @@ export interface DrawerTarget {
 
 export default function DetailDrawer({
   target,
-  token,
   onClose,
   onStatusChange,
 }: {
   target: DrawerTarget | null
-  token: string | null
   onClose: () => void
-  onStatusChange: (id: string, status: 'open' | 'done' | 'dismissed') => void
+  onStatusChange: (id: string, status: 'open' | 'done' | 'dismissed') => Promise<boolean>
 }) {
+  const [statusError, setStatusError] = useState(false)
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -33,9 +33,20 @@ export default function DetailDrawer({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // A failure from a previous item must not haunt the next one.
+  useEffect(() => {
+    setStatusError(false)
+  }, [target?.item.id])
+
   if (!target) return null
   const { item } = target
   const incident = item.kind === 'incident'
+
+  const change = async (status: 'open' | 'done' | 'dismissed') => {
+    setStatusError(false)
+    const ok = await onStatusChange(item.id, status)
+    if (!ok) setStatusError(true)
+  }
 
   return (
     <div className="fixed inset-y-0 right-0 z-50 flex w-[440px] flex-col overflow-y-auto border-l border-deck-hair bg-deck-panel p-5 shadow-[-24px_0_48px_rgba(0,0,0,0.5)]">
@@ -69,14 +80,14 @@ export default function DetailDrawer({
           <>
             <button
               type="button"
-              onClick={() => onStatusChange(item.id, 'done')}
+              onClick={() => change('done')}
               className="rounded-[3px] border border-deck-hair px-3 py-1.5 text-deck-dim hover:border-deck-dim hover:text-deck-ink"
             >
               mark done
             </button>
             <button
               type="button"
-              onClick={() => onStatusChange(item.id, 'dismissed')}
+              onClick={() => change('dismissed')}
               className="rounded-[3px] border border-deck-hair px-3 py-1.5 text-deck-faint hover:border-deck-dim hover:text-deck-dim"
             >
               dismiss
@@ -85,21 +96,21 @@ export default function DetailDrawer({
         ) : (
           <button
             type="button"
-            onClick={() => onStatusChange(item.id, 'open')}
+            onClick={() => change('open')}
             className="rounded-[3px] border border-deck-hair px-3 py-1.5 text-deck-amber"
           >
             reopen
           </button>
         )}
+        {statusError && (
+          <span className="self-center text-deck-amber">
+            ▲ update failed; is the server up?
+          </span>
+        )}
       </div>
 
       <div className="mt-6 border-t border-deck-hair pt-5">
-        <PromptComposer
-          key={item.id}
-          seed={item.promptSeed}
-          projectId={item.projectId}
-          token={token}
-        />
+        <PromptComposer key={item.id} seed={item.promptSeed} projectId={item.projectId} />
       </div>
     </div>
   )

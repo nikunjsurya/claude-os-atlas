@@ -7,8 +7,10 @@
 
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import type { N8nPulse, ProjectPulse, QueueItem, SiteCard } from '@/lib/types'
+import { mutateJson } from '@/lib/clientMutate'
 import { usePoll } from './usePoll'
 import SiteCardZone from './SiteCardZone'
 import N8nRail from './N8nRail'
@@ -29,17 +31,34 @@ export default function DashboardRoot() {
   const projects = usePoll<ProjectPulse[]>('/api/pulse/projects', 120_000)
   const queue = usePoll<QueueBody>('/api/queue', 60_000)
 
-  const [token, setToken] = useState<string | null>(null)
   const [target, setTarget] = useState<DrawerTarget | null>(null)
+  const targetRef = useRef<DrawerTarget | null>(null)
+  targetRef.current = target
   // Cross-highlight: hovering a queue item, a project row, or a map node
   // lights the same project everywhere. One organism, one focus.
   const [focusId, setFocusId] = useState<string | null>(null)
 
+  // The drawer participates in browser history: opening pushes one marker
+  // entry, so Back closes the drawer instead of leaving the deck. UI closes
+  // (esc, the close button, a successful status change) unwind that same
+  // entry via history.back() so history never accumulates phantom states.
+  const openDrawer = useCallback((t: DrawerTarget) => {
+    if (!targetRef.current) window.history.pushState({ atlasDrawer: true }, '')
+    setTarget(t)
+  }, [])
+
+  const closeDrawer = useCallback(() => {
+    if (window.history.state?.atlasDrawer) window.history.back()
+    else setTarget(null)
+  }, [])
+
   useEffect(() => {
-    fetch('/api/session-token')
-      .then((res) => res.json())
-      .then((body: { token?: string }) => setToken(body.token ?? null))
-      .catch(() => setToken(null))
+    // A reload while the drawer was open leaves the marker entry behind;
+    // clear it so the first Back press after reload actually navigates.
+    if (window.history.state?.atlasDrawer) window.history.replaceState(null, '')
+    const onPop = () => setTarget(null)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   const pathFor = useCallback(
@@ -49,12 +68,12 @@ export default function DashboardRoot() {
   )
 
   const openItem = useCallback(
-    (item: QueueItem) => setTarget({ item, projectPath: pathFor(item.projectId) }),
-    [pathFor]
+    (item: QueueItem) => openDrawer({ item, projectPath: pathFor(item.projectId) }),
+    [openDrawer, pathFor]
   )
 
   const openProject = useCallback((project: ProjectPulse) => {
-    setTarget({
+    openDrawer({
       item: {
         id: `adhoc:${project.id}`,
         title: `Work on ${project.label}`,
@@ -70,36 +89,26 @@ export default function DashboardRoot() {
       },
       projectPath: project.path,
     })
-  }, [])
+  }, [openDrawer])
 
   const changeStatus = useCallback(
-    async (id: string, status: 'open' | 'done' | 'dismissed') => {
-      if (!token) return
-      await fetch(`/api/queue/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Atlas-Token': token,
-        },
-        body: JSON.stringify({ status }),
-      }).catch(() => null)
+    async (id: string, status: 'open' | 'done' | 'dismissed'): Promise<boolean> => {
+      const res = await mutateJson(
+        `/api/queue/${encodeURIComponent(id)}`,
+        { status },
+        'PATCH'
+      )
+      if (!res?.ok) return false
       queue.refetch()
-      setTarget(null)
+      closeDrawer()
+      return true
     },
-    [token, queue]
+    [queue, closeDrawer]
   )
 
   const recapture = useCallback(async () => {
-    if (!token) return
-    await fetch('/api/pulse/sites/refresh', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Atlas-Token': token,
-      },
-      body: '{}',
-    }).catch(() => null)
-  }, [token])
+    await mutateJson('/api/pulse/sites/refresh', {})
+  }, [])
 
   const openCount = queue.data?.items.filter((i) => i.status === 'open').length ?? null
   const flagged =
@@ -111,9 +120,9 @@ export default function DashboardRoot() {
       {/* status line: the half-second read */}
       <div className="flex items-baseline gap-6 pb-6 font-mono text-xs text-deck-dim">
         <span className="font-semibold tracking-[0.08em] text-deck-ink">CLAUDE OS</span>
-        <a href="/map" className="hover:text-deck-ink">
+        <Link href="/map" className="hover:text-deck-ink">
           map →
-        </a>
+        </Link>
         {sites.data && (
           <span>
             {sites.data.filter((s) => s.status === 'ok').length}/{sites.data.length} sites up
@@ -139,7 +148,7 @@ export default function DashboardRoot() {
         </div>
       ))}
 
-      <SiteCardZone sites={sites.data} onRecapture={token ? recapture : null} />
+      <SiteCardZone sites={sites.data} onRecapture={recapture} />
 
       <div className="mt-12 grid grid-cols-[1fr_380px] gap-16">
         <div className="space-y-10">
@@ -148,9 +157,12 @@ export default function DashboardRoot() {
               <h2 className="text-[11px] uppercase tracking-[0.12em] text-deck-dim">
                 System map
               </h2>
-              <a href="/map" className="font-mono text-[11px] text-deck-faint hover:text-deck-dim">
+              <Link
+                href="/map"
+                className="font-mono text-[11px] text-deck-faint hover:text-deck-dim"
+              >
                 full map →
-              </a>
+              </Link>
             </div>
             <div className="relative h-[300px] overflow-hidden rounded-[3px] border border-deck-hair">
               <DeckMap
@@ -178,12 +190,7 @@ export default function DashboardRoot() {
         />
       </div>
 
-      <DetailDrawer
-        target={target}
-        token={token}
-        onClose={() => setTarget(null)}
-        onStatusChange={changeStatus}
-      />
+      <DetailDrawer target={target} onClose={closeDrawer} onStatusChange={changeStatus} />
     </div>
   )
 }

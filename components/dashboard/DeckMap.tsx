@@ -8,6 +8,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AtlasResponse, ProjectPulse, QueueItem } from '@/lib/types'
 
@@ -80,6 +81,7 @@ export default function DeckMap({
   focusId: string | null
   onFocus: (id: string | null) => void
 }) {
+  const router = useRouter()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const fgRef = useRef<ForceGraphRef>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -557,7 +559,7 @@ export default function DeckMap({
             if (typeof node.id !== 'string') return
             const pulse = pulseById.get(node.id)
             if (pulse) onSelectProject(pulse)
-            else window.location.href = '/map'
+            else router.push('/map')
           }}
           nodeCanvasObjectMode={() => 'replace'}
           nodeCanvasObject={(

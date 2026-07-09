@@ -12,13 +12,17 @@ export interface GuardVerdict {
   reason?: string
 }
 
-let sessionToken: string | null = null
+// Next dev compiles each route into its own module graph, so module-level
+// state here is one-per-bundle, not one-per-boot: /api/session-token and
+// /api/launch would mint DIFFERENT tokens and every mutation 403s. The
+// token must live on globalThis, which the whole server process shares.
+const g = globalThis as { __atlasSessionToken?: string }
 
 export function getSessionToken(): string {
-  if (!sessionToken) {
-    sessionToken = crypto.randomBytes(24).toString('hex')
+  if (!g.__atlasSessionToken) {
+    g.__atlasSessionToken = crypto.randomBytes(24).toString('hex')
   }
-  return sessionToken
+  return g.__atlasSessionToken
 }
 
 export function isPublicMode(): boolean {

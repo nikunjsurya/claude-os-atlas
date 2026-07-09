@@ -6,6 +6,7 @@
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start",
+    "cockpit": "next build && next start -H 127.0.0.1",
     "test": "vitest run",
     "snapshot": "tsx scripts/build-snapshot.ts"
   },

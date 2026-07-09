@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkMutatingRequest, getSessionToken, publicMode404 } from './guard'
 
 const TOKEN = 'test-token-123'
@@ -60,6 +60,13 @@ describe('getSessionToken', () => {
     const a = getSessionToken()
     expect(a).toBe(getSessionToken())
     expect(a.length).toBeGreaterThanOrEqual(32)
+  })
+
+  it('survives module re-instantiation (Next dev gives each route its own module graph)', async () => {
+    const a = getSessionToken()
+    vi.resetModules()
+    const fresh = await import('./guard')
+    expect(fresh.getSessionToken()).toBe(a)
   })
 })
 

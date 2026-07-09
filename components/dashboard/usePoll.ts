@@ -13,12 +13,18 @@ export interface Poll<T> {
 export function usePoll<T>(url: string, intervalMs: number): Poll<T> {
   const [data, setData] = useState<T | null>(null)
   const alive = useRef(true)
+  const lastBody = useRef<string | null>(null)
 
   const refetch = useCallback(() => {
     fetch(url)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (alive.current && json !== null) setData(json as T)
+      .then((res) => (res.ok ? res.text() : null))
+      .then((body) => {
+        if (!alive.current || body === null) return
+        // Most polls return byte-identical payloads; skipping setState keeps
+        // the whole deck from re-rendering on every tick for nothing.
+        if (body === lastBody.current) return
+        lastBody.current = body
+        setData(JSON.parse(body) as T)
       })
       .catch(() => {
         // Keep last good data; zones render their own degraded states.
