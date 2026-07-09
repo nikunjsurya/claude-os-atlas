@@ -53,6 +53,20 @@ interface GraphNode {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ForceGraphRef = any
 
+// Force-graph link endpoints become node objects after ingestion.
+function idOf(endpoint: unknown): string {
+  if (typeof endpoint === 'string') return endpoint
+  if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
+    const id = (endpoint as { id?: unknown }).id
+    if (typeof id === 'string') return id
+  }
+  return ''
+}
+
+function linkKey(l: { source: unknown; target: unknown }): string {
+  return `${idOf(l.source)}|${idOf(l.target)}`
+}
+
 export default function DeckMap({
   projects,
   queueItems,
@@ -161,6 +175,43 @@ export default function DeckMap({
     }
   }, [atlas])
 
+  // Obsidian's addictive hover: the focus node and its neighbors hold
+  // full presence while everything else melts back, lerped per frame
+  // (tau ~90ms, same constant as ConstellationCanvas).
+  const neighborsOf = useMemo(() => {
+    const m = new Map<string, Set<string>>()
+    for (const l of graphData.links as Array<{ source: unknown; target: unknown }>) {
+      const s = idOf(l.source)
+      const t = idOf(l.target)
+      if (!m.has(s)) m.set(s, new Set())
+      if (!m.has(t)) m.set(t, new Set())
+      m.get(s)!.add(t)
+      m.get(t)!.add(s)
+    }
+    return m
+  }, [graphData])
+
+  const nodeById = useMemo(() => {
+    const m = new Map<string, GraphNode>()
+    for (const n of graphData.nodes) m.set(n.id, n)
+    return m
+  }, [graphData])
+
+  const nodeAlphaRef = useRef<Map<string, number>>(new Map())
+  const linkAlphaRef = useRef<Map<string, number>>(new Map())
+  const lastFrameRef = useRef<number>(performance.now())
+
+  // Synapse bolts (ambient): a jagged arc fires along a real edge near the
+  // center every few seconds; the center light flashes with it.
+  const boltRef = useRef<{
+    sourceId: string
+    targetId: string
+    born: number
+    jitter: number[]
+  } | null>(null)
+  const nextBoltAtRef = useRef(0)
+  const glowBoostRef = useRef(0)
+
   // Dev/e2e hook: page-space screen position of a node, so demos and
   // future e2e tests can hover exact stars instead of guessing pixels.
   useEffect(() => {
@@ -207,13 +258,53 @@ export default function DeckMap({
     }
   }, [graphData])
 
-  // Obsidian's distances are tuned for a full screen; in a 300px window
-  // the settling graph starts mostly out of frame. Re-frame repeatedly
-  // while the simulation cools instead of waiting for engine stop.
+  // Frame the CONNECTED web (plus hot orphans), not the whole node set:
+  // ~half the atlas nodes are unlinked, and repulsion pushes them into a
+  // wide ring that zoomToFit would frame, crushing the actual web into an
+  // unreadable knot in the middle. Obsidian reads "connected" because its
+  // camera lives on the web; ours does too. Orphans drift at the margins.
+  const fitToWeb = () => {
+    const el = containerRef.current
+    const fg = fgRef.current
+    if (!el || !fg) return
+    const keep = graphData.nodes.filter(
+      (n) =>
+        typeof n.x === 'number' &&
+        typeof n.y === 'number' &&
+        ((neighborsOf.get(n.id)?.size ?? 0) > 0 || hotIds.has(n.id))
+    )
+    if (keep.length < 2) {
+      fg.zoomToFit?.(300, 24)
+      return
+    }
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    for (const n of keep) {
+      minX = Math.min(minX, n.x!)
+      maxX = Math.max(maxX, n.x!)
+      minY = Math.min(minY, n.y!)
+      maxY = Math.max(maxY, n.y!)
+    }
+    const pad = 60
+    const zoom = Math.min(
+      el.clientWidth / (maxX - minX + pad),
+      el.clientHeight / (maxY - minY + pad),
+      3
+    )
+    fg.centerAt?.((minX + maxX) / 2, (minY + maxY) / 2, 300)
+    fg.zoom?.(zoom, 300)
+  }
+  const fitToWebRef = useRef(fitToWeb)
+  fitToWebRef.current = fitToWeb
+
+  // Re-frame repeatedly while the simulation cools instead of waiting
+  // for engine stop (Obsidian distances start mostly out of frame here).
   useEffect(() => {
     if (graphData.nodes.length === 0) return
     const timers = [600, 1600, 3200, 6000, 9000].map((ms) =>
-      setTimeout(() => fgRef.current?.zoomToFit?.(300, 24), ms)
+      setTimeout(() => fitToWebRef.current(), ms)
     )
     return () => timers.forEach(clearTimeout)
   }, [graphData])
@@ -291,16 +382,42 @@ export default function DeckMap({
           nodeRelSize={5}
           onEngineStop={() => {
             engineStoppedRef.current = true
-            fgRef.current?.zoomToFit?.(400, 24)
+            fitToWebRef.current()
           }}
-          onRenderFramePre={(ctx: CanvasRenderingContext2D) => {
-            // Ambient center light: a soft breath, not a lightning storm.
+          onRenderFramePre={(ctx: CanvasRenderingContext2D, globalScale: number) => {
+            const now = performance.now()
+            const dt = Math.min(now - lastFrameRef.current, 100)
+            lastFrameRef.current = now
+            const k = 1 - Math.exp(-dt / 90)
+
+            // Obsidian neighbor fade: lerp every node/link alpha toward its
+            // target given the current focus (hover here or another zone).
+            const focus = hoveredIdRef.current ?? focusIdRef.current
+            for (const node of graphData.nodes) {
+              const target =
+                !focus ||
+                node.id === focus ||
+                neighborsOf.get(focus)?.has(node.id)
+                  ? 1
+                  : 0.22
+              const cur = nodeAlphaRef.current.get(node.id) ?? 1
+              nodeAlphaRef.current.set(node.id, cur + (target - cur) * k)
+            }
+            for (const l of graphData.links as Array<{ source: unknown; target: unknown }>) {
+              const incident =
+                !!focus && (idOf(l.source) === focus || idOf(l.target) === focus)
+              const target = !focus ? 0.22 : incident ? 0.55 : 0.05
+              const key = linkKey(l)
+              const cur = linkAlphaRef.current.get(key) ?? 0.22
+              linkAlphaRef.current.set(key, cur + (target - cur) * k)
+            }
+
             if (!ambientRef.current) return
-            const nodes = graphData.nodes
+
             let cx = 0
             let cy = 0
             let count = 0
-            for (const node of nodes) {
+            for (const node of graphData.nodes) {
               if (typeof node.x === 'number' && typeof node.y === 'number') {
                 cx += node.x
                 cy += node.y
@@ -310,18 +427,114 @@ export default function DeckMap({
             if (count === 0) return
             cx /= count
             cy /= count
+
+            // Center light: breathing base, flashing when a synapse fires.
+            glowBoostRef.current = Math.max(0, glowBoostRef.current - dt / 600)
             const breath = reducedMotionRef.current
               ? 0.5
               : 0.5 + 0.5 * Math.sin(((Date.now() % 7000) / 7000) * 2 * Math.PI)
+            const intensity = 0.1 + 0.07 * breath + 0.22 * glowBoostRef.current
             const radius = 230
             const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
-            glow.addColorStop(0, `rgba(96, 118, 150, ${0.06 + 0.05 * breath})`)
-            glow.addColorStop(1, 'rgba(96, 118, 150, 0)')
+            glow.addColorStop(0, `rgba(110, 132, 168, ${intensity})`)
+            glow.addColorStop(1, 'rgba(110, 132, 168, 0)')
             ctx.fillStyle = glow
             ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2)
+
+            if (reducedMotionRef.current) return
+
+            // Synapse lightning: every few seconds a jagged arc fires along
+            // a real edge near the center. Real connections only.
+            const links = graphData.links as Array<{ source: unknown; target: unknown }>
+            if (now >= nextBoltAtRef.current && links.length > 0) {
+              // Long edges only: the knot's short edges render a bolt at
+              // ~15 screen px, which reads as noise, not lightning.
+              let best: { sourceId: string; targetId: string } | null = null
+              let bestLen = 0
+              for (let i = 0; i < 14; i++) {
+                const l = links[Math.floor(Math.random() * links.length)]
+                const s = nodeById.get(idOf(l.source))
+                const t = nodeById.get(idOf(l.target))
+                if (!s || !t || typeof s.x !== 'number' || typeof t.x !== 'number') continue
+                const len = Math.hypot(t.x - s.x, t.y! - s.y!)
+                if (len > bestLen) {
+                  bestLen = len
+                  best = { sourceId: s.id, targetId: t.id }
+                }
+              }
+              if (best) {
+                boltRef.current = {
+                  ...best,
+                  born: now,
+                  jitter: Array.from({ length: 3 }, () => (Math.random() - 0.5) * 26),
+                }
+                glowBoostRef.current = 1
+              }
+              nextBoltAtRef.current = now + 2200 + Math.random() * 2600
+            }
+
+            const bolt = boltRef.current
+            if (bolt) {
+              const age = now - bolt.born
+              if (age > 280) {
+                boltRef.current = null
+              } else {
+                const s = nodeById.get(bolt.sourceId)
+                const t = nodeById.get(bolt.targetId)
+                if (s && t && typeof s.x === 'number' && typeof t.x === 'number') {
+                  // globalScale is NOT reliably passed to onRenderFramePre
+                  // (unlike nodeCanvasObject); dividing by undefined made
+                  // every bolt coordinate NaN, and canvas drops NaN paths
+                  // silently. zoom() is the trustworthy scale source here.
+                  const scale = Math.max(fgRef.current?.zoom?.() ?? 1, 0.05)
+                  const progress = age / 280
+                  const flicker =
+                    0.85 * (1 - progress) * (0.65 + 0.35 * Math.sin(progress * 42))
+                  const dx = t.x - s.x
+                  const dy = t.y! - s.y!
+                  const len = Math.hypot(dx, dy) || 1
+                  const px = -dy / len
+                  const py = dx / len
+                  ctx.save()
+                  ctx.strokeStyle = `rgba(186, 205, 234, ${flicker})`
+                  ctx.lineWidth = 1.6 / scale
+                  ctx.shadowColor = 'rgba(186, 205, 234, 0.9)'
+                  ctx.shadowBlur = 14
+                  ctx.beginPath()
+                  ctx.moveTo(s.x, s.y!)
+                  bolt.jitter.forEach((j, i) => {
+                    const f = (i + 1) / (bolt.jitter.length + 1)
+                    ctx.lineTo(
+                      s.x! + dx * f + (px * j) / scale,
+                      s.y! + dy * f + (py * j) / scale
+                    )
+                  })
+                  ctx.lineTo(t.x, t.y!)
+                  ctx.stroke()
+                  // Endpoint sparks so the arc visibly connects two stars.
+                  for (const end of [s, t]) {
+                    ctx.beginPath()
+                    ctx.arc(end.x!, end.y!, 3 / scale, 0, 2 * Math.PI)
+                    ctx.fillStyle = `rgba(210, 224, 246, ${flicker})`
+                    ctx.fill()
+                  }
+                  ctx.restore()
+                }
+              }
+            }
           }}
-          linkColor={() => 'rgba(150, 160, 175, 0.07)'}
-          linkWidth={() => 0.5}
+          linkColor={(l: { source: unknown; target: unknown }) =>
+            `rgba(150, 160, 175, ${linkAlphaRef.current.get(linkKey(l)) ?? 0.22})`
+          }
+          linkWidth={(l: { source: unknown; target: unknown }) => {
+            // Screen-constant width: zoomToFit runs the camera well below 1,
+            // where the old 0.5 graph-unit width rendered subpixel-invisible.
+            const zoom = Math.max(fgRef.current?.zoom?.() ?? 1, 0.05)
+            const focus = hoveredIdRef.current ?? focusIdRef.current
+            const incident =
+              !!focus && (idOf(l.source) === focus || idOf(l.target) === focus)
+            return (incident ? 1.7 : 1) / zoom
+          }}
           onNodeHover={(node: { id?: string | number } | null) => {
             const id = node && typeof node.id === 'string' ? node.id : null
             hoveredIdRef.current = id
@@ -356,6 +569,8 @@ export default function DeckMap({
             const hot = hotIds.has(node.id)
             const hovered =
               node.id === hoveredIdRef.current || node.id === focusIdRef.current
+            // Obsidian fade: everything outside the focus neighborhood melts.
+            const fade = nodeAlphaRef.current.get(node.id) ?? 1
             // Constant SCREEN-pixel sizes: zoomToFit shrinks the camera far
             // below 1, so graph-unit radii would vanish. Divide by scale.
             const rPx = hot ? 3.5 : node.kind === 'project' ? 2.8 : 2.2
@@ -369,7 +584,7 @@ export default function DeckMap({
                 : 0.5 + 0.5 * Math.sin(((Date.now() % 3000) / 3000) * 2 * Math.PI)
               ctx.beginPath()
               ctx.arc(node.x, node.y, r + (3 + 2 * pulse) / globalScale, 0, 2 * Math.PI)
-              ctx.fillStyle = `rgba(${AMBER.r}, ${AMBER.g}, ${AMBER.b}, ${0.10 + 0.08 * pulse})`
+              ctx.fillStyle = `rgba(${AMBER.r}, ${AMBER.g}, ${AMBER.b}, ${(0.10 + 0.08 * pulse) * fade})`
               ctx.fill()
             }
 
@@ -391,7 +606,7 @@ export default function DeckMap({
             const c = hot ? AMBER : node.kind === 'project' ? DIM : FAINT
             ctx.beginPath()
             ctx.arc(node.x, node.y, r, 0, 2 * Math.PI)
-            ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${hovered ? 1 : hot ? 0.95 : 0.8})`
+            ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${(hovered ? 1 : hot ? 0.95 : 0.8) * fade})`
             ctx.fill()
 
             // The hover card carries the name for mouse hovers; the canvas
