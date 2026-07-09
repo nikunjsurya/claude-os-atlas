@@ -27,7 +27,8 @@ The V1 constellation stays, demoted to a `/map` tab. The dashboard becomes `/`.
 - No headless / in-browser Claude execution. V2 launches a *terminal you own*; it does not run agents itself. (V3 candidate.)
 - No auth, no deploy, no public URL, no mobile layout (min viewport 1280×800, same as V1).
 - No writes to n8n (read-only API usage), no editing of memory/vault files from the UI.
-- Queue "done/dismiss" state changes are allowed (writes only to the repo-local `data/queue.json`); nothing else on disk is mutated by the UI except screenshot cache and launch artifacts.
+- Queue "done/dismiss" state changes are allowed (writes only to the gitignored `data/queue-state.json`); nothing else on disk is mutated by the UI except screenshot cache and launch artifacts.
+- Public mode stays read-only constellation. `NEXT_PUBLIC_ATLAS_MODE === 'public'` builds render the sanitized snapshot exactly as V1 does today, and none of the V2 surfaces exist there (see §4.4).
 - No new graph features on the constellation.
 
 ## 3. Success criteria
@@ -37,7 +38,7 @@ The V1 constellation stays, demoted to a `/map` tab. The dashboard becomes `/`.
 3. Killing/failing an n8n workflow surfaces it in the incident rail within one poll cycle (≤60s), with the execution error message visible.
 4. Every project with uncommitted or unpushed work is visibly flagged in the project grid.
 5. Clicking a queue item opens a detail drawer with status context and an **editable** prompt; "Start in Warp" opens Warp in the right directory with `claude` running the edited prompt. Verified live at least once against Warp and once against the `wt` fallback.
-6. The constellation still fully works at `/map`; all 44 existing tests plus ~30 new ones pass.
+6. The constellation still fully works at `/map`; all existing tests (49 at time of writing) plus the new suite (~40) pass.
 7. Surya has picked one of three rendered visual directions (taste gate, §8) and the shipped dashboard follows it.
 
 ## 4. Architecture
@@ -52,8 +53,8 @@ No re-platforming. Next.js 15 App Router + TS + Tailwind 4 + zustand + vitest, e
 
 ```
 app/
-├── page.tsx                        NEW HOME: mission control dashboard (server shell, client zones)
-├── map/page.tsx                    V1 constellation relocated verbatim (AtlasRoot + friends)
+├── page.tsx                        local mode: mission control dashboard; public mode: V1 constellation (unchanged)
+├── map/page.tsx                    constellation, extracted into a shared component used by both routes
 └── api/
     ├── atlas/route.ts              unchanged (feeds /map)
     ├── pulse/
@@ -62,12 +63,12 @@ app/
     │   ├── n8n/route.ts            GET  → N8nPulse
     │   └── projects/route.ts       GET  → ProjectPulse[]
     ├── queue/
-    │   ├── route.ts                GET (merged curated+derived) / POST (add curated item)
-    │   └── [id]/route.ts           PATCH → {status: done|dismissed|open}
+    │   ├── route.ts                GET only (merged curated+derived); curated items are hand-edited in data/queue.json, no POST endpoint
+    │   └── [id]/route.ts           PATCH → {status: done|dismissed|open}, writes queue-state.json
     └── launch/route.ts             POST → validate, write prompt file + Warp launch config, spawn
 
 components/dashboard/
-├── DashboardRoot.tsx               client root, zustand, polling timers
+├── DashboardRoot.tsx               client root, zustand; poll cadence: n8n 30s, sites+queue 60s, projects 120s, plus refetch on tab focus and after mutations
 ├── SiteCardZone.tsx                screenshot cards w/ status ribbon
 ├── N8nRail.tsx                     workflow list + incident rail (errors pinned top)
 ├── ProjectGrid.tsx                 compact grid, git badges (dirty/ahead/behind)
@@ -85,7 +86,7 @@ lib/
 │   ├── gitStatus.ts                porcelain+branch parse (pure fn) + runner w/ concurrency cap
 │   └── cache.ts                    per-collector in-memory TTL cache (sites 60s, n8n 30s, projects 120s)
 ├── queue/
-│   ├── store.ts                    read/write data/queue.json (atomic tmp+rename)
+│   ├── store.ts                    reads data/queue.json (curated, committed); reads/writes data/queue-state.json (runtime, gitignored, atomic tmp+rename)
 │   ├── derive.ts                   auto-items from collector snapshots (pure)
 │   └── merge.ts                    curated ∪ derived, dedupe by stable derived ids (pure)
 └── launch/
@@ -96,11 +97,20 @@ lib/
 
 ### 4.3 Config & data files
 
-- `data/queue.json`: curated queue, committed. Seeded from the 2026-07-08 sweep owner actions.
+- `data/queue.json`: curated queue, committed. Seeded from the 2026-07-08 sweep owner actions (source: `Projects/sessions/2026-07-08-optimization-sweep/SUMMARY.md`).
+- `data/queue-state.json`: runtime state (status overrides + `suppressed[]`), gitignored. Keeps the atlas repo clean so the dashboard never flags itself over its own runtime writes.
 - `data/sites.json`: site card registry `[{id, label, url}]`, committed. Initial: aetherbloom, topsnip, mindward. Portfolio added when deployed.
 - `data/projects-extra.json`: repos outside `~/Projects/` to include in the grid: `["C:\\Users\\surya\\topsnip-web"]`.
 - `public/shots/<siteId>.png`: screenshot cache, gitignored.
 - Excluded from project grid: `_archive`, `_parked`, `sessions`, `reference`, `Nikunj's Vault`, non-git folders.
+
+### 4.4 Public mode (Vercel snapshot build)
+
+The repo already ships a public mode (`NEXT_PUBLIC_ATLAS_MODE === 'public'`: sanitized `data/atlas-snapshot.json` via `lib/publicMode.ts`, built by `npm run snapshot`). V2 changes nothing about it and must not leak into it:
+
+- Public `/` keeps rendering the sanitized constellation exactly as today. The dashboard is local-only by construction.
+- Every V2 route (`/api/pulse/*`, `/api/queue*`, `/api/launch`, `/api/session-token`) returns 404 in public mode via one shared guard helper, unit-tested. A public deploy must never expose a process-spawning endpoint.
+- `/map` exists in both modes and renders the same extracted constellation component.
 
 ## 5. Data contracts
 
@@ -132,8 +142,8 @@ export interface ProjectPulse {
   id: string                          // V1 node id convention: 'project-<kebab>'
   label: string; path: string
   git: { branch: string; dirty: number; ahead: number; behind: number
-         lastCommitAt: string | null } | null   // null = not a git repo (excluded from grid)
-  status: PulseStatus                 // warn if dirty>0 or ahead>0; ok otherwise
+         lastCommitAt: string | null }          // non-git folders are excluded server-side, so git is always present
+  status: PulseStatus                 // warn if dirty>0 or ahead>0; unknown if git call failed/timed out; ok otherwise ('error' reserved, never emitted in V2)
 }
 
 export interface QueueItem {
@@ -155,21 +165,25 @@ export interface LaunchRequest {
 }
 ```
 
-**n8n endpoints used (read-only):** `GET /api/v1/workflows?active=true` and `GET /api/v1/executions?limit=40` (filtered client-side per workflow; error executions additionally fetched with `status=error&limit=20`). Auth header `X-N8N-API-KEY`. Key never reaches the browser: all n8n calls are server-side; `N8nPulse` contains no secrets.
+**n8n endpoints used (read-only):** `GET /api/v1/workflows?active=true` and `GET /api/v1/executions?limit=40` (filtered per workflow inside the collector, server-side; error executions additionally fetched with `status=error&limit=20`). Auth header `X-N8N-API-KEY`. Key never reaches the browser: all n8n calls are server-side; `N8nPulse` contains no secrets.
 
 **Derived queue rules (`derive.ts`, pure):**
 - n8n error execution → `incident`, id `n8n:<workflowId>` (latest error only, so one card per workflow).
 - Site status `error` → `incident`, id `site:<siteId>`.
 - Project `dirty>0 || ahead>0` → `claude-task` "commit/push stranded work", id `git:<projectId>`.
-- Derived items whose condition has cleared disappear on next merge. A curated/derived id collision prefers curated. `done/dismissed` derived ids are remembered in `queue.json` under `suppressed[]` so dismissing sticks until the underlying stableKey changes.
+- Derived items whose condition has cleared disappear on next merge. A curated/derived id collision prefers curated.
+- Dismissing a derived item writes `{id, stateKey}` to `suppressed[]` in `queue-state.json`. A derived item is hidden iff both id AND stateKey match. stateKeys: n8n → the error `executionId` (a new, distinct error execution resurfaces); site → `<httpStatus>:<UTC day>` (a still-dead site resurfaces the next day); git → branch name (condition-clearing covers the rest: repo going clean prunes the entry, going dirty again resurfaces it).
+- `suppressed[]` entries whose id is absent from the current derivation are pruned on merge, so a suppression can never outlive the incident it silenced.
+
+**Screenshot lifecycle:** `GET /api/pulse/sites` never blocks on capture. It kicks a background capture (single-flight per site) for any site whose shot is missing or older than 6h, and returns the current cache immediately; the 60s client poll picks up fresh shots as they land, which also covers first population on a fresh checkout. Shots older than 24h mark the card `warn` (stale badge). `POST /api/pulse/sites/refresh` is the manual force-recapture.
 
 ## 6. Click-to-work launch flow
 
 1. UI: DetailDrawer → PromptComposer seeds from `promptSeed`, user edits, picks terminal (default Warp), hits Start.
 2. `POST /api/launch` validates: projectId resolves to a real allowlisted directory (the project-grid set + `projects-extra.json`); prompt length bounds; terminal enum.
 3. `plan.ts` produces a `LaunchPlan`: prompt written to `data/launch/<timestamp>-<projectId>.md` (gitignored); the command **always receives the prompt via file read, never via string interpolation into a shell line built from user input**.
-4. Warp path: write YAML to `%APPDATA%\warp\Warp\launch_configurations\atlas.yaml` (create dir if absent) with `cwd` = project path and a command that starts `claude` with the prompt file's content as a single argv (exact shell incantation is an implementation detail behind `plan.ts`, verified by the dry-run tests + one live launch). Then spawn `start warp://launch/atlas.yaml` (or config-name form, whichever the installed Warp accepts; determined empirically in Phase B and locked in a comment + test fixture).
-5. `wt` fallback: `wt -d <projectPath> pwsh -NoExit -Command "claude (Get-Content -Raw '<promptFile>')"`. Same file-passing rule.
+4. Warp path: write YAML to the Warp launch-config location (believed `%APPDATA%\warp\Warp\launch_configurations\atlas.yaml`; the directory AND the accepted `warp://launch/...` form are both determined empirically in the same Phase B step, then locked in a code comment + test fixture; create dir if absent) with `cwd` = project path and a command that makes the shell read the prompt from the file at runtime, e.g. `claude "$(Get-Content -Raw '<promptFile>')"`. The command line embeds only the prompt file PATH, never prompt content, so quoting and the 32k Windows command-line limit are non-issues.
+5. `wt` fallback: `wt -d <projectPath> powershell -NoExit -Command "claude (Get-Content -Raw '<promptFile>')"`. Windows PowerShell 5.1 is always present on Win11; `pwsh` is NOT preinstalled and must not be assumed. Same path-only rule.
 6. Response: `{launched: true, terminal, promptFile}`. UI toasts and marks the queue item `in-flight` visually (client-side only; no new status enum).
 
 Failure behavior: spawn error → 502 with the raw error message surfaced in the drawer; the prompt file is kept so nothing typed is ever lost.
@@ -177,9 +191,10 @@ Failure behavior: spawn error → 502 with the raw error message surfaced in the
 ## 7. Security
 
 - Dev server binds loopback only: `next dev -H 127.0.0.1` in `package.json`.
-- `/api/launch` is the only process-spawning route. It never accepts a path or a command: only an allowlisted `projectId`, a prompt (written to file), and a terminal enum. `spawn.ts` uses argv arrays (`shell:false`) except the `start`-URI hop, which contains no user-controlled bytes.
+- **Mutating-route guard (blocking requirement).** Loopback binding does NOT stop drive-by requests: any web page the browser visits can fire a no-preflight POST at `127.0.0.1:3000` (text/plain body, no cookies needed), and DNS rebinding is a second path. A forged `/api/launch` would open a full-autonomy `claude` session on an attacker-authored prompt: that is remote code execution. Every mutating route (`/api/launch`, `/api/pulse/sites/refresh`, `PATCH /api/queue/[id]`) therefore passes one shared guard enforcing ALL of: (1) `Host` is `127.0.0.1` or `localhost`; (2) `Origin`, when present, is the same localhost origin; (3) `Content-Type` is exactly `application/json`; (4) a per-boot random token, generated server-side at startup, fetched by the UI from same-origin `GET /api/session-token` (unreadable cross-origin under the same-origin policy) and echoed in an `X-Atlas-Token` header. The guard is unit-tested: each leg rejected independently.
+- `/api/launch` is the only route that spawns a process influenced by request input (`sites/refresh` spawns Chrome and `pulse/projects` spawns git, but only against committed config). It never accepts a path or a command: only an allowlisted `projectId`, a prompt (written to file), and a terminal enum. `spawn.ts` uses argv arrays (`shell:false`) except the `start`-URI hop, which contains no user-controlled bytes.
 - n8n API key stays server-side (see §5). Screenshot capture runs only against URLs from the committed `data/sites.json`, never from request input.
-- CSRF surface accepted as-is for V1-style localhost single-user use; mitigated by loopback bind + no cookies + JSON-only bodies.
+- All V2 routes return 404 in public mode (§4.4).
 
 ## 8. Visual direction (taste gate): process, not prescription
 
@@ -201,8 +216,8 @@ Deliberately not specified here. Phase C runs the taste loop agreed on 2026-07-0
 | Site down | Card → error state; derived `site:` incident appears in queue. |
 | Repo git call exceeds 4s | That project renders `unknown` status; logged; others unaffected (per-repo isolation, concurrency cap 6). |
 | Warp not installed / URI launch fails | Automatic fallback to `wt`; if that also fails, 502 + drawer shows error + prompt file path. |
-| Prompt contains quotes/newlines/unicode | Irrelevant by construction: prompt travels by file (§6.3). Covered by fixture tests. |
-| `queue.json` malformed | Back up to `queue.json.bad-<ts>`, start with empty curated set + visible warning banner. |
+| Prompt contains quotes/newlines/unicode | Irrelevant by construction: prompt travels by file (§6 step 3). Covered by fixture tests. |
+| `queue.json` / `queue-state.json` malformed | Back up to `<name>.bad-<ts>`, continue with empty curated set / fresh runtime state + visible warning banner. |
 | Two dashboard tabs open | Collector TTL cache makes polling cheap; queue writes atomic via tmp+rename; last writer wins (single human user). |
 | Dev server not running | Nothing works, by design. `npm run dev` is the on-switch. (Auto-start on boot = V3 candidate, out of scope.) |
 
@@ -218,15 +233,16 @@ Same philosophy as V1: pure logic gets unit tests, visuals get eyeballs, side ef
 | `queue/derive.ts` + `merge.ts` (rules in §5, suppression, collisions) | pure | 8 |
 | `launch/plan.ts` + `warpConfig.ts` (allowlist reject, path traversal reject, YAML shape, argv shape, prompt-file contract) | pure / dry-run | 7 |
 | API routes: queue GET merge, PATCH, launch POST validation | integration w/ fixtures, spawn mocked | 5 |
-| **New total** | | **~36** |
+| Mutating-route guard (§7): each leg rejected independently + public-mode 404 | integration, spawn mocked | 5 |
+| **New total** | | **~41** |
 
-Existing 44 V1 tests must keep passing (constellation untouched except relocation; `app/map/page.tsx` re-export keeps AtlasRoot imports stable).
+All existing tests must keep passing (49 at time of writing; the V1 spec's "44" drifted upward during implementation). The constellation page is extracted into one shared component: `app/map/page.tsx` renders it in both modes, and public-mode `/` keeps rendering it exactly as today. Extraction, not duplication.
 
 Not tested: actual Warp/wt spawn (one live verification each, §3.5), screenshot pixel output (eyeball), polling timers (trivial), components.
 
 ## 11. Build plan
 
-**Phase A: collectors & contracts (no UI change).** types → n8nAuth+n8n → gitStatus → sites+screenshot → cache → queue store/derive/merge → API routes → tests green. Ends: `curl` of each route returns real machine data.
+**Phase A: collectors & contracts (no UI change).** types → n8nAuth+n8n → gitStatus → sites+screenshot → cache → queue store/derive/merge → mutating-route guard + public-mode 404 helper → API routes → tests green. Ends: `curl` of each route returns real machine data.
 
 **Phase B: skeleton + launch (ugly on purpose).** Relocate constellation to `/map` → DashboardRoot + four zones with unstyled real data → DetailDrawer + PromptComposer → launch route + `plan/warpConfig/spawn` → **live launch verified in Warp and wt** → seed `data/queue.json` from sweep owner-actions. Ends: the whole loop works end-to-end, looks like a wireframe.
 
@@ -243,5 +259,6 @@ Each phase ends with a commit on `v2-mission-control`; merge to main only after 
 - [ ] Queue item → drawer → edit prompt → Start in Warp → Warp opens in project dir, claude running edited prompt
 - [ ] Same flow with `wt` fallback verified once
 - [ ] `data/queue.json` seeded with sweep owner-actions; done/dismiss persists across reload
-- [ ] ~80 tests pass (`npm test`); no console errors on load
+- [ ] Full suite passes (`npm test`): all pre-existing tests plus ~41 new; no console errors on load
+- [ ] Guard verified: cross-origin/tokenless POST to `/api/launch` rejected (tested); public-mode build 404s every V2 route
 - [ ] Direction picked by Surya applied everywhere; taste memory saved
