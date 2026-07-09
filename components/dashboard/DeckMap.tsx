@@ -76,6 +76,17 @@ export default function DeckMap({
   // Launch ripples: projectId -> start timestamp. Drawn for ~1.6s.
   const ripplesRef = useRef<Map<string, number>>(new Map())
   const reducedMotionRef = useRef(false)
+  // Ambient mode (opt-in, experimental): slow clockwise drift + a soft
+  // breathing light at the constellation's center. Off by default; the
+  // deck's law is stillness, and this is the one sanctioned exception.
+  const [ambient, setAmbient] = useState(false)
+  const ambientRef = useRef(false)
+  ambientRef.current = ambient
+  const engineStoppedRef = useRef(false)
+  // Hover card: content id + screen position; visibility drives the
+  // 150ms fade/rise so the card animates out instead of vanishing.
+  const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
 
   useEffect(() => {
     reducedMotionRef.current = window.matchMedia(
@@ -102,6 +113,11 @@ export default function DeckMap({
       .then((body) => setAtlas(body as AtlasResponse | null))
       .catch(() => setAtlas(null))
   }, [])
+
+  // NOTE: the react-force-graph ref handle has NO graphData() method; the
+  // library mutates the node objects we passed in, so graphData.nodes in
+  // this scope IS the live simulation state. Optional chaining on a
+  // nonexistent method silently no-ops; never reach for fg.graphData().
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -133,17 +149,36 @@ export default function DeckMap({
   }, [projects])
 
   const graphData = useMemo(() => {
-    if (!atlas) return { nodes: [], links: [] }
+    if (!atlas) return { nodes: [] as GraphNode[], links: [] }
     return {
       nodes: atlas.nodes.map((n) => ({
         id: n.id,
         label: n.label,
         kind: n.kind,
         size: n.size,
-      })),
+      })) as GraphNode[],
       links: atlas.edges.map((e) => ({ source: e.source, target: e.target })),
     }
   }, [atlas])
+
+  // Dev/e2e hook: page-space screen position of a node, so demos and
+  // future e2e tests can hover exact stars instead of guessing pixels.
+  useEffect(() => {
+    ;(window as unknown as Record<string, unknown>).__deckMapNodeScreen = (
+      id: string
+    ) => {
+      const n = graphData.nodes.find((x) => x.id === id)
+      if (!n || typeof n.x !== 'number' || typeof n.y !== 'number') return null
+      const local = fgRef.current?.graph2ScreenCoords?.(n.x, n.y)
+      const canvas = containerRef.current?.querySelector('canvas')
+      if (!local || !canvas) return null
+      const rect = canvas.getBoundingClientRect()
+      return { x: rect.left + local.x, y: rect.top + local.y }
+    }
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__deckMapNodeScreen
+    }
+  }, [graphData])
 
   // Apply Obsidian force params once the simulation exists (same retry
   // pattern as ConstellationCanvas).
@@ -183,6 +218,52 @@ export default function DeckMap({
     return () => timers.forEach(clearTimeout)
   }, [graphData])
 
+  // Ambient drift: once the simulation has settled, rotate every node
+  // around the constellation's centroid, one revolution every 2.5 minutes.
+  // Pauses while a node is hovered (so tooltips hold still) and under
+  // prefers-reduced-motion. Node coords stay truthful, so hit-testing,
+  // edges, and ripples all follow the drift for free.
+  useEffect(() => {
+    if (!ambient || reducedMotionRef.current) return
+    const ROTATION_PERIOD_MS = 150_000
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const dt = now - last
+      last = now
+      if (engineStoppedRef.current && !hoveredIdRef.current) {
+        const nodes = graphData.nodes
+        let cx = 0
+        let cy = 0
+        let count = 0
+        for (const node of nodes) {
+          if (typeof node.x === 'number' && typeof node.y === 'number') {
+            cx += node.x
+            cy += node.y
+            count++
+          }
+        }
+        if (count > 0) {
+          cx /= count
+          cy /= count
+          const dTheta = (2 * Math.PI * dt) / ROTATION_PERIOD_MS
+          const cos = Math.cos(dTheta)
+          const sin = Math.sin(dTheta)
+          for (const node of nodes) {
+            if (typeof node.x !== 'number' || typeof node.y !== 'number') continue
+            const dx = node.x - cx
+            const dy = node.y - cy
+            node.x = cx + dx * cos - dy * sin
+            node.y = cy + dx * sin + dy * cos
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [ambient, graphData])
+
   // The container must ALWAYS mount: the ResizeObserver effect runs once
   // on mount, and an early-return loading branch would leave it observing
   // nothing (size stuck at 0, no canvas ever). Loading is an overlay.
@@ -208,7 +289,37 @@ export default function DeckMap({
           cooldownTime={8000}
           warmupTicks={40}
           nodeRelSize={5}
-          onEngineStop={() => fgRef.current?.zoomToFit?.(400, 24)}
+          onEngineStop={() => {
+            engineStoppedRef.current = true
+            fgRef.current?.zoomToFit?.(400, 24)
+          }}
+          onRenderFramePre={(ctx: CanvasRenderingContext2D) => {
+            // Ambient center light: a soft breath, not a lightning storm.
+            if (!ambientRef.current) return
+            const nodes = graphData.nodes
+            let cx = 0
+            let cy = 0
+            let count = 0
+            for (const node of nodes) {
+              if (typeof node.x === 'number' && typeof node.y === 'number') {
+                cx += node.x
+                cy += node.y
+                count++
+              }
+            }
+            if (count === 0) return
+            cx /= count
+            cy /= count
+            const breath = reducedMotionRef.current
+              ? 0.5
+              : 0.5 + 0.5 * Math.sin(((Date.now() % 7000) / 7000) * 2 * Math.PI)
+            const radius = 230
+            const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
+            glow.addColorStop(0, `rgba(96, 118, 150, ${0.06 + 0.05 * breath})`)
+            glow.addColorStop(1, 'rgba(96, 118, 150, 0)')
+            ctx.fillStyle = glow
+            ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2)
+          }}
           linkColor={() => 'rgba(150, 160, 175, 0.07)'}
           linkWidth={() => 0.5}
           onNodeHover={(node: { id?: string | number } | null) => {
@@ -216,6 +327,18 @@ export default function DeckMap({
             hoveredIdRef.current = id
             // Only project nodes participate in cross-highlighting.
             onFocus(id && pulseById.has(id) ? id : null)
+            // Hover card: pin to the node's screen position; on leave keep
+            // the content mounted and let visibility drive the fade-out.
+            if (id && node) {
+              const n = node as GraphNode
+              const screen = fgRef.current?.graph2ScreenCoords?.(n.x ?? 0, n.y ?? 0)
+              if (screen) {
+                setTooltip({ id, x: screen.x, y: screen.y })
+                setTooltipVisible(true)
+              }
+            } else {
+              setTooltipVisible(false)
+            }
           }}
           onNodeClick={(node: { id?: string | number }) => {
             if (typeof node.id !== 'string') return
@@ -271,10 +394,11 @@ export default function DeckMap({
             ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${hovered ? 1 : hot ? 0.95 : 0.8})`
             ctx.fill()
 
-            // Hover reveals the name; the pulse is signal enough at rest.
+            // The hover card carries the name for mouse hovers; the canvas
+            // label only serves cross-highlights arriving from OTHER zones.
             // NOTE: canvas ctx.font silently rejects var() strings, so a
             // concrete family list is required here.
-            if (hovered) {
+            if (node.id === focusIdRef.current && node.id !== hoveredIdRef.current) {
               const fontSize = 11 / globalScale
               ctx.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`
               ctx.textAlign = 'center'
@@ -299,6 +423,75 @@ export default function DeckMap({
           }}
         />
       )}
+
+      <button
+        type="button"
+        onClick={() => setAmbient((a) => !a)}
+        className={`absolute right-2 top-2 z-10 font-mono text-[10px] tracking-[0.08em] ${
+          ambient ? 'text-deck-dim' : 'text-deck-faint'
+        } hover:text-deck-dim`}
+        title="slow drift + center light"
+      >
+        {ambient ? '◉ ambient' : '○ ambient'}
+      </button>
+
+      {tooltip &&
+        (() => {
+          const pulse = pulseById.get(tooltip.id)
+          const hot = hotIds.has(tooltip.id)
+          const atlasNode = atlas?.nodes.find((n) => n.id === tooltip.id)
+          const openItems = (queueItems ?? [])
+            .filter((q) => q.status === 'open' && q.projectId === tooltip.id)
+            .slice(0, 2)
+          const eyebrow = hot
+            ? 'text-deck-amber'
+            : pulse
+              ? 'text-deck-ok'
+              : 'text-deck-faint'
+          return (
+            <div
+              className={`pointer-events-none absolute z-10 w-60 rounded-[3px] border bg-deck-panel/95 p-2.5 backdrop-blur-sm transition-all duration-150 ease-out ${
+                tooltipVisible ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+              } ${hot ? 'border-deck-amber/60' : 'border-deck-hair'}`}
+              style={{
+                left: clampPx(tooltip.x + 14, 8, size.width - 256),
+                top: clampPx(tooltip.y + 12, 8, size.height - 132),
+              }}
+            >
+              <div className={`font-mono text-[10px] uppercase tracking-[0.1em] ${eyebrow}`}>
+                {atlasNode?.kind ?? 'node'}
+                {hot ? ' · needs a hand' : pulse ? ' · synced' : ''}
+              </div>
+              <div className="pt-0.5 text-sm font-medium text-deck-ink">
+                {atlasNode?.label ?? tooltip.id}
+              </div>
+              {pulse?.git && (
+                <div className="pt-1 font-mono text-[11px] text-deck-dim">
+                  {pulse.git.branch}
+                  {pulse.git.dirty > 0 ? ` · ±${pulse.git.dirty}` : ''}
+                  {pulse.git.ahead > 0 ? ` · ↑${pulse.git.ahead}` : ''}
+                </div>
+              )}
+              {openItems.map((q) => (
+                <div key={q.id} className="pt-1 text-[11px] leading-snug text-deck-dim">
+                  ▸ {q.title}
+                </div>
+              ))}
+              {!pulse && atlasNode?.description && (
+                <div className="line-clamp-2 pt-1 text-[11px] leading-snug text-deck-dim">
+                  {atlasNode.description}
+                </div>
+              )}
+              <div className="pt-1.5 font-mono text-[10px] text-deck-faint">
+                {pulse ? 'click to work on it' : 'click for full map'}
+              </div>
+            </div>
+          )
+        })()}
     </div>
   )
+}
+
+function clampPx(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v
 }
