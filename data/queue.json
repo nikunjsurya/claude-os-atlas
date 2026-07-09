@@ -1,1 +1,112 @@
-[]
+[
+  {
+    "id": "q-topsnip-golive",
+    "title": "TopSnip go-live: migration-v6 then merge",
+    "projectId": "project-topsnip-web",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Supabase SQL editor: run `supabase/migration-v6-review-remediation.sql`, THEN merge `codex/review-remediation` to main and push. `/api/feed` breaks if merged before the migration. Full runbook: `Projects/sessions/2026-07-08-optimization-sweep/LOG.md` iter 1. If you give Claude `SUPABASE_ACCESS_TOKEN` (or run `supabase login`), it can run the whole go-live including live verification.",
+    "promptSeed": "Run the TopSnip go-live. Preconditions: migration-v6 must be applied in Supabase BEFORE merging (I may need to give you SUPABASE_ACCESS_TOKEN). Then: git checkout main, merge codex/review-remediation, push, and verify topsnip.co/feed live. Runbook is in Projects/sessions/2026-07-08-optimization-sweep/LOG.md iteration 1.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-vaani-key-backup",
+    "title": "Back up ~/.tauri/vaani-updater.key off this machine",
+    "projectId": "project-vaani",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Losing this key bricks Vaani auto-updates. Copy it to a password manager or USB. Only you can do this; Claude must not exfiltrate the key.",
+    "promptSeed": "Walk me through backing up ~/.tauri/vaani-updater.key safely (password manager or USB), then verify the backup exists without printing the key contents.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-primal-rescue-deploy-check",
+    "title": "Verify Primal Rescue deploy picked up the data-corruption fix",
+    "projectId": "project-primal-rescue",
+    "kind": "claude-task",
+    "source": "curated",
+    "detail": "The fix was merged to main and pushed on 2026-07-08. If the app is Vercel-linked it should have deployed automatically; verify against the live app, not the repo.",
+    "promptSeed": "Verify that the deployed Primal Rescue app includes the data-corruption fix pushed to main on 2026-07-08. Find the live URL (check vercel.json / README / Vercel CLI), confirm the deployed build is newer than the fix commit, and exercise the fixed flow if possible.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-mindward-stratz-token",
+    "title": "Mindward: STRATZ token (Steam login), wire env vars",
+    "projectId": "project-mindward",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Log in at stratz.com with Steam, get an API token, set `STRATZ_TOKEN` in Vercel env + `.env.local`. Unlocks live draft data for /draft.",
+    "promptSeed": "I have a STRATZ token. Wire it into Mindward: set STRATZ_TOKEN in .env.local, add it to Vercel env for mindward-web, redeploy, and verify the /draft flow pulls live data.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-careerops-backup",
+    "title": "career-ops: create private repo + push surya-local (has CV data)",
+    "projectId": "project-career-ops",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Branch `surya-local` holds the whole personal layer (auto-apply agent, CV, scanner) committed but with no remote. Contains CV data, so it needs your explicit sign-off: `gh repo create nikunjsurya/career-ops-personal --private` then push.",
+    "promptSeed": "I approve backing up career-ops. Create the private repo nikunjsurya/career-ops-personal with gh, add it as remote 'mine', push the surya-local branch, and verify the push landed. Do not make the repo public.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-portfolio-deploy",
+    "title": "Portfolio: Vercel import + domain (DEPLOYMENT.md steps 2-5)",
+    "projectId": "project-portfolio",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Repo nikunjsurya/portfolio is pushed and ready. Import it in Vercel, then sort the domain. Note: surya.dev currently answers 200 for someone else; check availability first.",
+    "promptSeed": "Deploy the portfolio: walk DEPLOYMENT.md steps 2-5 with me. Use the Vercel tools/CLI where possible, check whether surya.dev is actually available (it answered 200 for someone on 2026-07-08), and propose fallback domains if not.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-somyacreates-decision",
+    "title": "somyacreates: pick the redesign (cinematic-gallery vs aetherbloom-style)",
+    "projectId": "project-somyacreates",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Both redesign branches are pushed. This is a taste call: look at both rendered, pick one, say one sentence about why (that sentence becomes taste memory). Then Claude merges the winner to main.",
+    "promptSeed": "Run both somyacreates redesign branches locally (cinematic-gallery and aetherbloom-style), screenshot each, show me both side by side, collect my pick and my one-sentence reason, save it as taste memory, then merge the winner to main.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-templates-merge",
+    "title": "_templates: merge wiki-compiler branch to master",
+    "projectId": "project--templates",
+    "kind": "claude-task",
+    "source": "curated",
+    "detail": "11 untracked skills (incl. nikunj-skill voice profile) were committed on the wiki-compiler branch during the sweep. Merge to master when ready; consider a private remote for backup.",
+    "promptSeed": "In Projects/_templates, review the wiki-compiler branch commits, merge to master if clean, and propose (do not create without approval) a private GitHub repo for backup since this holds the voice profile.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-aetherbloom-margins-keys",
+    "title": "Aetherbloom Margins: Supabase keys per GO-LIVE.md",
+    "projectId": "project-aetherbloom",
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "Phase 2 (The Margins public wall) is shipped and waiting on Supabase keys. Follow GO-LIVE.md in the aetherbloom repo.",
+    "promptSeed": "I have the Supabase keys for Aetherbloom Margins. Follow GO-LIVE.md: wire the keys, deploy, and verify the public wall end-to-end including the keeper admin flow.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  },
+  {
+    "id": "q-key-rotation",
+    "title": "Rotate Telegram + Pexels keys (flagged in dotclaude sync)",
+    "projectId": null,
+    "kind": "owner-action",
+    "source": "curated",
+    "detail": "The dotclaude sync flagged Telegram and Pexels keys for rotation weeks ago. Rotate them at the providers, then update n8n credentials and any .env files that hold them.",
+    "promptSeed": "I rotated the Telegram and Pexels keys. Find every place the old keys live (n8n credentials, .env files, scripts), update them to the new values I paste, and verify the affected workflows still run.",
+    "createdAt": "2026-07-08T00:00:00.000Z",
+    "status": "open"
+  }
+]
